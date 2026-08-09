@@ -459,20 +459,10 @@
     margin:0; line-height:1.25; white-space:nowrap;
     width:80px; flex-shrink:0;
   }
-  .nm-prod-inputwrap{
-    display:flex; align-items:center; flex:1;
-    border:1px solid var(--azul-borde); border-radius:9px; background:#fff;
-    padding:0 10px;
-  }
-  .nm-prod-inputwrap:focus-within{ border-color:var(--azul); }
-  .nm-prod-inputwrap .nm-prod-dollar{
-    color:var(--azul); font-weight:700; font-size:16px;
-    flex-shrink:0; margin-right:5px;
-  }
   .nuevo-prod-item input{
-    width:auto; flex:1; padding:10px 0; border:none; border-radius:0;
+    width:auto; flex:1; padding:10px 12px; border-radius:9px; border:1px solid var(--azul-borde);
     font-size:16px; outline:none; color:var(--azul); font-weight:700;
-    text-align:left; background:transparent;
+    text-align:left; background:#fff;
   }
   .nuevo-prod-item input:focus{ border-color:var(--azul); }
   .nuevo-prod-item input::placeholder{ color:#b7c0d4; font-weight:500; }
@@ -1422,21 +1412,19 @@ function itemProductoHTML(p, i){
   return `
     <div class="nuevo-prod-item">
       <label for="nm-prod-${i}">${p}</label>
-      <div class="nm-prod-inputwrap">
-        <span class="nm-prod-dollar">$</span>
-        <input type="text" inputmode="decimal" id="nm-prod-${i}" data-producto="${p}" placeholder="0" class="nm-prod-input">
-      </div>
+      <input type="text" inputmode="decimal" id="nm-prod-${i}" data-producto="${p}" placeholder="$0" class="nm-prod-input">
     </div>`;
 }
 nmProductosPrincipales.innerHTML = CONFIG.PRODUCTOS
   .map((p, i) => itemProductoHTML(p, i)).join('');
 
 // Formateo en vivo de los campos de cantidad: separador de miles dinámico,
-// coma como separador decimal, y máximo 4 dígitos en la parte entera.
+// coma como separador decimal, signo $ adelante (igual que el campo Total),
+// y máximo 4 dígitos en la parte entera.
 function formatearCantidad(valorCrudo){
   const negativo = valorCrudo.trim().startsWith('-');
 
-  // dejar solo dígitos y comas
+  // dejar solo dígitos y comas (ignora el $ y cualquier otro caracter)
   let limpio = valorCrudo.replace(/[^0-9,]/g, '');
 
   // quedarnos solo con la primera coma (separador decimal)
@@ -1451,7 +1439,9 @@ function formatearCantidad(valorCrudo){
   // separador de miles dinámico (punto)
   const enteroConPuntos = entero.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 
-  let resultado = (negativo ? '-' : '') + enteroConPuntos;
+  if(enteroConPuntos === '' && decimal === null) return '';
+
+  let resultado = (negativo ? '-' : '') + '$' + enteroConPuntos;
   if(decimal !== null) resultado += ',' + decimal;
 
   return resultado;
@@ -1477,10 +1467,10 @@ function actualizarTotalFormulario(){
   nmTotal.value = formatMoneda(total);
 }
 
-// Antes de enviar: quita los puntos de miles y deja el número limpio
-// (la coma decimal se convierte a punto del lado del Apps Script).
+// Antes de enviar/calcular: quita el $ y los puntos de miles y deja el
+// número limpio (la coma decimal se convierte a punto del lado del Apps Script).
 function limpiarCantidadParaEnvio(valorFormateado){
-  return valorFormateado.replace(/\./g, '');
+  return valorFormateado.replace(/\$/g, '').replace(/\./g, '');
 }
 
 // generar los botones de Categoría, una sola vez
