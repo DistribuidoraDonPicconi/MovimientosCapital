@@ -566,6 +566,9 @@
 
       <div class="nuevo-productos-title">Montos</div>
       <div class="nuevo-productos-grid principales" id="nm-productos-principales"></div>
+
+      <label for="nm-total">Total</label>
+      <input type="text" id="nm-total" readonly>
     </div>
     <div class="nuevo-error" id="nuevo-error"></div>
     <div class="nuevo-footer">
@@ -694,6 +697,17 @@ function formatFecha(valor){
   const dd = String(d.getDate()).padStart(2,'0');
   const mm = String(d.getMonth()+1).padStart(2,'0');
   return `${dd}/${mm}/${d.getFullYear()}`;
+}
+
+// Arma un string YYYY-MM-DD a partir de la fecha LOCAL (no UTC), para usar
+// como value de un <input type="date">. Usar .toISOString() acá está mal:
+// convierte a UTC y en Argentina (UTC-3) hace que después de las 21hs
+// aparezca el día siguiente.
+function fechaLocalInput(d){
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const dd = String(d.getDate()).padStart(2,'0');
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 function formatNum(n){
@@ -1368,6 +1382,7 @@ const nmConcepto = document.getElementById('nm-concepto');
 const nmNotas = document.getElementById('nm-notas');
 const nmUsuario = document.getElementById('nm-usuario');
 const nmFecha = document.getElementById('nm-fecha');
+const nmTotal = document.getElementById('nm-total');
 const nuevoError = document.getElementById('nuevo-error');
 const btnGuardar = document.getElementById('nuevo-guardar');
 
@@ -1411,8 +1426,22 @@ function formatearCantidad(valorCrudo){
 document.querySelectorAll('.nm-prod-input').forEach(inp => {
   inp.addEventListener('input', () => {
     inp.value = formatearCantidad(inp.value);
+    actualizarTotalFormulario();
   });
 });
+
+// Suma Efectivo + Cheque + Banco cargados en el formulario y lo muestra
+// en el campo de solo lectura "Total".
+function actualizarTotalFormulario(){
+  let total = 0;
+  document.querySelectorAll('#nm-productos-principales input').forEach(inp => {
+    const val = inp.value.trim();
+    if(val === '') return;
+    const n = parseFloat(limpiarCantidadParaEnvio(val).replace(',', '.'));
+    if(!isNaN(n)) total += n;
+  });
+  nmTotal.value = formatMoneda(total);
+}
 
 // Antes de enviar: quita los puntos de miles y deja el número limpio
 // (la coma decimal se convierte a punto del lado del Apps Script).
@@ -1458,12 +1487,13 @@ function abrirNuevoModal(mov, modoEditar){
   nmNotas.value = precargar ? (mov['Notas'] || '') : '';
   nmUsuario.value = emailActual;
   nmFecha.value = precargar && mov[CONFIG.CAMPO_FECHA]
-    ? new Date(mov[CONFIG.CAMPO_FECHA]).toISOString().slice(0,10)
-    : new Date().toISOString().slice(0,10);
+    ? fechaLocalInput(new Date(mov[CONFIG.CAMPO_FECHA]))
+    : fechaLocalInput(new Date());
 
   document.querySelectorAll('#nm-productos-principales input').forEach(inp => {
     inp.value = (precargar && modoEditar) ? numeroAInputStr(mov[inp.dataset.producto]) : '';
   });
+  actualizarTotalFormulario();
 
   nuevoError.textContent = '';
   btnGuardar.disabled = false;
