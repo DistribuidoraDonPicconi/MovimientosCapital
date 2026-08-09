@@ -562,14 +562,14 @@
       <label>Notas</label>
       <input type="text" id="nm-notas" placeholder="Opcional">
 
-      <label>Usuario</label>
-      <input type="text" id="nm-usuario" readonly>      
-
       <div class="nuevo-productos-title">Importe</div>
       <div class="nuevo-productos-grid principales" id="nm-productos-principales"></div>
 
       <label for="nm-total">Total</label>
       <input type="text" id="nm-total" readonly>
+
+      <label>Usuario</label>
+      <input type="text" id="nm-usuario" readonly>
     </div>
     <div class="nuevo-error" id="nuevo-error"></div>
     <div class="nuevo-footer">
@@ -1156,12 +1156,12 @@ function renderMovimientos(filtro){
       const clsTotal = total > 0 ? 'pos' : (total < 0 ? 'neg' : 'zero');
 
       return `<tr class="mov-row" data-id="${mov['ID'] || ''}">
-        <td>${mov['Usuario'] || '-'}</td>
         <td class="fecha">${formatFecha(mov[CONFIG.CAMPO_FECHA])}</td>
         <td>${mov['Categoría'] || '-'}</td>
         <td>${mov['Concepto'] || '-'}</td>
         ${celdasProducto}
         <td class="num ${clsTotal}">${formatMoneda(total)}</td>
+        <td>${mov['Usuario'] || '-'}</td>
       </tr>`;
     }).join('');
 
@@ -1178,9 +1178,9 @@ function renderMovimientos(filtro){
         <table class="mov">
           <thead>
             <tr>
-              <th>Usuario</th><th>Fecha</th><th>Categoría</th><th>Concepto</th>
+              <th>Fecha</th><th>Categoría</th><th>Concepto</th>
               ${headerProductos}
-              <th>Total</th>
+              <th>Total</th><th>Usuario</th>
             </tr>
           </thead>
           <tbody>${filas}</tbody>
