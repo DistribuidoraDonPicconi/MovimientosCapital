@@ -459,15 +459,20 @@
     margin:0; line-height:1.25; white-space:nowrap;
     width:80px; flex-shrink:0;
   }
-  .nm-prod-inputwrap{ position:relative; flex:1; }
+  .nm-prod-inputwrap{
+    display:flex; align-items:center; flex:1;
+    border:1px solid var(--azul-borde); border-radius:9px; background:#fff;
+    padding:0 10px;
+  }
+  .nm-prod-inputwrap:focus-within{ border-color:var(--azul); }
   .nm-prod-inputwrap .nm-prod-dollar{
-    position:absolute; left:12px; top:50%; transform:translateY(-50%);
-    color:var(--azul); font-weight:700; font-size:16px; pointer-events:none;
+    color:var(--azul); font-weight:700; font-size:16px;
+    flex-shrink:0; margin-right:5px;
   }
   .nuevo-prod-item input{
-    width:auto; flex:1; padding:10px 10px 10px 30px; border-radius:9px; border:1px solid var(--azul-borde);
+    width:auto; flex:1; padding:10px 0; border:none; border-radius:0;
     font-size:16px; outline:none; color:var(--azul); font-weight:700;
-    text-align:left; background:#fff;
+    text-align:left; background:transparent;
   }
   .nuevo-prod-item input:focus{ border-color:var(--azul); }
   .nuevo-prod-item input::placeholder{ color:#b7c0d4; font-weight:500; }
