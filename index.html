@@ -1439,7 +1439,11 @@ function formatearCantidad(valorCrudo){
   // separador de miles dinámico (punto)
   const enteroConPuntos = entero.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 
-  if(enteroConPuntos === '' && decimal === null) return '';
+  // si todavía no hay dígitos cargados, dejar solo el signo menos (si lo hay)
+  // en vez de borrarlo, para poder seguir escribiendo un número negativo
+  if(enteroConPuntos === '' && decimal === null){
+    return negativo ? '-' : '';
+  }
 
   let resultado = (negativo ? '-' : '') + '$' + enteroConPuntos;
   if(decimal !== null) resultado += ',' + decimal;
