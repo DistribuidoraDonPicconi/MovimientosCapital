@@ -410,7 +410,7 @@
     padding:16px 20px; overflow-y:auto; -webkit-overflow-scrolling:touch;
   }
   .nuevo-body label{
-    display:block; font-size:13px; font-weight:700; color:var(--azul-osc);
+    display:block; font-size:14.5px; font-weight:800; color:var(--azul-osc);
     margin:14px 0 6px;
   }
   .nuevo-body label:first-child{ margin-top:0; }
@@ -440,7 +440,7 @@
   }
   .nm-seccion-btn:active{ opacity:0.85; }
   .nuevo-productos-title{
-    font-size:13px; font-weight:800; color:var(--azul-osc);
+    font-size:14.5px; font-weight:800; color:var(--azul-osc);
     margin:20px 0 8px; padding-top:14px; border-top:1px solid var(--linea);
   }
   .nuevo-productos-grid{
@@ -457,11 +457,17 @@
   .nuevo-prod-item label{
     font-size:13px; font-weight:800; color:#1a1f2b;
     margin:0; line-height:1.25; white-space:nowrap;
+    width:76px; flex-shrink:0;
+  }
+  .nm-prod-inputwrap{ position:relative; flex:1; }
+  .nm-prod-inputwrap .nm-prod-dollar{
+    position:absolute; left:11px; top:50%; transform:translateY(-50%);
+    color:var(--azul); font-weight:700; font-size:15px; pointer-events:none;
   }
   .nuevo-prod-item input{
-    width:auto; flex:1; padding:8px 10px; border-radius:9px; border:1px solid var(--azul-borde);
+    width:auto; flex:1; padding:8px 10px 8px 24px; border-radius:9px; border:1px solid var(--azul-borde);
     font-size:15px; outline:none; color:var(--azul); font-weight:700;
-    text-align:right; background:#fff;
+    text-align:left; background:#fff;
   }
   .nuevo-prod-item input:focus{ border-color:var(--azul); }
   .nuevo-prod-item input::placeholder{ color:#b7c0d4; font-weight:500; }
@@ -1411,7 +1417,10 @@ function itemProductoHTML(p, i){
   return `
     <div class="nuevo-prod-item">
       <label for="nm-prod-${i}">${p}</label>
-      <input type="text" inputmode="decimal" id="nm-prod-${i}" data-producto="${p}" placeholder="0" class="nm-prod-input">
+      <div class="nm-prod-inputwrap">
+        <span class="nm-prod-dollar">$</span>
+        <input type="text" inputmode="decimal" id="nm-prod-${i}" data-producto="${p}" placeholder="0" class="nm-prod-input">
+      </div>
     </div>`;
 }
 nmProductosPrincipales.innerHTML = CONFIG.PRODUCTOS
