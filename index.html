@@ -346,9 +346,12 @@
   .confirm-box .btn-confirmar:active{ opacity:0.85; }
 
   /* Botón flotante (+) para nuevo movimiento */
+  /* "right" se fija dinámicamente por JS (posicionarFabs) contra el borde
+     derecho real de la tabla de Movimientos; este valor es solo el
+     respaldo inicial antes de que corra el JS. */
   .fab{
     position:fixed; bottom:28px;
-    right:max(22px, calc((100vw - var(--app-max-width)) / 2 + 22px));
+    right:22px;
     width:56px; height:56px; border-radius:50%;
     background:var(--azul); color:#fff; border:none;
     display:flex; align-items:center; justify-content:center;
@@ -358,10 +361,10 @@
   .fab.hidden{ display:none; }
   .fab svg{ width:26px; height:26px; }
 
-  /* Botones flotantes "Copiar" y "Editar", aparecen arriba del + al seleccionar una fila */
+  /* Botones flotantes "Copiar", "Editar" y "Eliminar", aparecen arriba del + al seleccionar una fila */
   .fab-acciones{
     position:fixed; bottom:96px;
-    right:max(22px, calc((100vw - var(--app-max-width)) / 2 + 22px));
+    right:22px;
     display:flex; flex-direction:column; gap:12px; z-index:50;
   }
   .fab-acciones.hidden{ display:none; }
@@ -702,16 +705,18 @@ function formatNum(n){
   });
 }
 
-// Formatea un monto de plata: siempre 2 decimales, negativos entre
-// paréntesis (se pintan de rojo aparte, vía clase CSS).
+// Formatea un monto de plata: sin decimales si el número es entero,
+// negativos con signo menos delante (se pintan de rojo aparte, vía clase CSS).
 function formatMoneda(n){
   const num = Number(n || 0);
-  const abs = Math.abs(Math.round((num + Number.EPSILON) * 100) / 100);
+  const redondeado = Math.round((num + Number.EPSILON) * 100) / 100;
+  const abs = Math.abs(redondeado);
+  const esEntero = abs % 1 === 0;
   const str = '$' + abs.toLocaleString('es-AR', {
-    minimumFractionDigits: 2,
+    minimumFractionDigits: esEntero ? 0 : 2,
     maximumFractionDigits: 2
   });
-  return num < 0 ? `(${str})` : str;
+  return redondeado < 0 ? `-${str}` : str;
 }
 
 /* ============== Login con Google ============== */
@@ -1211,7 +1216,21 @@ function render(){
     renderMovimientos(filtro);
   }
   restaurarScroll();
+  posicionarFabs();
 }
+
+// Alinea los botones flotantes (+/copiar/editar/eliminar) contra el borde
+// derecho real de la tabla de Movimientos, tanto en celular como en PC
+// (donde la tabla se estira más ancha que el resto de la app).
+function posicionarFabs(){
+  const wrap = document.querySelector('.mov-table-wrap');
+  if(!wrap) return;
+  const rect = wrap.getBoundingClientRect();
+  const right = Math.max(16, window.innerWidth - rect.right + 22);
+  fabNuevo.style.right = right + 'px';
+  fabAcciones.style.right = right + 'px';
+}
+window.addEventListener('resize', posicionarFabs);
 
 function setTab(tab){
   if(tab === currentTab) return;
