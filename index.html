@@ -446,21 +446,21 @@
     display:grid; gap:10px;
   }
   .nuevo-productos-grid.principales{
-    grid-template-columns:1fr 1fr 1fr;
+    grid-template-columns:1fr;
   }
   .nuevo-prod-item{
     background:#fdfbf3; border:1px solid #ece4c8; border-radius:14px;
-    padding:12px 8px 11px; text-align:center;
-    display:flex; flex-direction:column; align-items:center;
+    padding:10px 14px; text-align:left;
+    display:flex; flex-direction:row; align-items:center; justify-content:space-between; gap:10px;
   }
   .nuevo-prod-item label{
-    font-size:12.5px; font-weight:800; color:#1a1f2b;
-    margin:0 0 8px; line-height:1.25;
+    font-size:13px; font-weight:800; color:#1a1f2b;
+    margin:0; line-height:1.25; white-space:nowrap;
   }
   .nuevo-prod-item input{
-    width:100%; padding:8px 4px; border-radius:9px; border:1px solid var(--azul-borde);
+    width:auto; flex:1; padding:8px 10px; border-radius:9px; border:1px solid var(--azul-borde);
     font-size:15px; outline:none; color:var(--azul); font-weight:700;
-    text-align:center; background:#fff;
+    text-align:right; background:#fff;
   }
   .nuevo-prod-item input:focus{ border-color:var(--azul); }
   .nuevo-prod-item input::placeholder{ color:#b7c0d4; font-weight:500; }
@@ -547,13 +547,13 @@
     </div>
     <div class="nuevo-body">
       <input type="hidden" id="nm-edit-id">
+	  
+	   <label>Fecha</label>
+      <input type="date" id="nm-fecha">
 
       <label>Categoría</label>
       <div class="nm-seccion-grid" id="nm-seccion-grid"></div>
       <input type="hidden" id="nm-seccion">
-	  
-	  <label>Fecha</label>
-      <input type="date" id="nm-fecha">
 
       <label>Concepto</label>
       <input type="text" id="nm-concepto" placeholder="Ej: 1B, Juan, Gustavo, Comedor">
@@ -564,7 +564,7 @@
       <label>Usuario</label>
       <input type="text" id="nm-usuario" readonly>      
 
-      <div class="nuevo-productos-title">Montos</div>
+      <div class="nuevo-productos-title">Importe</div>
       <div class="nuevo-productos-grid principales" id="nm-productos-principales"></div>
 
       <label for="nm-total">Total</label>
