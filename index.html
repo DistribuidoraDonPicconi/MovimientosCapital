@@ -188,20 +188,24 @@
   table.stock td.total{ font-size:16px; font-weight:800; color:#1a1f2b; width:78px; white-space:nowrap; }
   table.stock th.entradas, table.stock th.salidas, table.stock th.total{ width:78px; }
 
-  /* Tabla "Plata Actual": una sola fila con Efectivo/Cheque/Banco/Total */
-  table.plata-actual{ table-layout:fixed; }
-  table.plata-actual th.plata{ width:auto; font-size:11.5px; }
+  /* Tabla "Plata Actual": una fila por Modo (Efectivo/Cheque/Banco) + Total */
+  table.plata-actual th.modo, table.plata-actual td.modo{
+    text-align:left; font-weight:800; color:#1a1f2b; width:auto;
+  }
+  table.plata-actual th.plata, table.plata-actual td.plata{
+    text-align:right; width:auto;
+  }
   table.plata-actual td.plata{
-    font-size:16px; font-weight:800; color:#1a1f2b; width:auto;
-    white-space:normal; word-break:break-word;
+    font-size:15.5px; font-weight:800; color:#1a1f2b;
   }
   table.plata-actual td.plata.pos{ color:#1a1f2b; }
   table.plata-actual td.plata.neg{ color:var(--rojo); }
-  table.plata-actual th.plata.total, table.plata-actual td.plata.total{
-    background:#eef3fc;
+  table.plata-actual tr.plata-total-row td{
+    background:#eef3fc; border-top:1.5px solid var(--azul-borde);
   }
-  table.plata-actual td.plata.total{ font-size:17px; color:var(--azul-osc); }
-  table.plata-actual td.plata.total.neg{ color:var(--rojo); }
+  table.plata-actual tr.plata-total-row td.modo{ color:var(--azul-osc); }
+  table.plata-actual tr.plata-total-row td.plata{ font-size:16.5px; color:var(--azul-osc); }
+  table.plata-actual tr.plata-total-row td.plata.neg{ color:var(--rojo); }
 
   /* Tabla de Resumen: misma estructura que Stock Actual pero con fuente más
      chica, para que entren los números de Entradas/Salidas/Total sin cortarse */
@@ -656,9 +660,8 @@ const CONFIG = {
   // 'sin_permisos': solo puede ver, ningún botón de acción.
   ROLES: {
     'nicolaspicconi@gmail.com': 'admin',
-    'santinopicconi@gmail.com': 'colaborador',
-    'distribuidoradonpicconi@gmail.com': 'sin_permisos',
-    'alejandropicconi@gmail.com': 'sin_permisos'
+    'alejandropicconi@gmail.com': 'colaborador',
+    'distribuidoradonpicconi@gmail.com': 'sin_permisos'
   },
 
   // Nombre EXACTO de la columna de fecha a usar para ordenar / mostrar
@@ -886,31 +889,41 @@ function calcularStock(){
 function renderStock(){
   const stock = calcularStock();
   const total = CONFIG.PRODUCTOS.reduce((acc, p) => acc + stock[p].total, 0);
+  const ultimaFechaTotal = CONFIG.PRODUCTOS.reduce((max, p) => {
+    const f = stock[p].ultimaFecha;
+    return (f && (!max || f > max)) ? f : max;
+  }, null);
 
-  const celdas = CONFIG.PRODUCTOS.map(p => {
-    const t = Math.round((stock[p].total + Number.EPSILON) * 100) / 100;
+  const filas = CONFIG.PRODUCTOS.map(p => {
+    const s = stock[p];
+    const t = Math.round((s.total + Number.EPSILON) * 100) / 100;
     const clase = t < 0 ? 'neg' : 'pos';
-    return `<td class="plata ${clase}">${formatMoneda(stock[p].total)}</td>`;
+    return `<tr>
+      <td class="modo">${p}</td>
+      <td class="plata ${clase}">${formatMoneda(s.total)}</td>
+      <td class="fecha">${s.ultimaFecha ? formatFecha(s.ultimaFecha) : '-'}</td>
+    </tr>`;
   }).join('');
 
   const totalRedondeado = Math.round((total + Number.EPSILON) * 100) / 100;
   const claseTotal = totalRedondeado < 0 ? 'neg' : 'pos';
+  const filaTotal = `<tr class="plata-total-row">
+    <td class="modo">Total</td>
+    <td class="plata total ${claseTotal}">${formatMoneda(total)}</td>
+    <td class="fecha">${ultimaFechaTotal ? formatFecha(ultimaFechaTotal) : '-'}</td>
+  </tr>`;
 
   mainEl.innerHTML = `
     <div class="stock-table-wrap">
       <table class="stock plata-actual">
         <thead>
           <tr>
-            ${CONFIG.PRODUCTOS.map(p => `<th class="plata">${p}</th>`).join('')}
-            <th class="plata total">Total</th>
+            <th class="modo">Modo</th>
+            <th class="plata">Importe</th>
+            <th class="fecha">Fecha</th>
           </tr>
         </thead>
-        <tbody>
-          <tr>
-            ${celdas}
-            <td class="plata total ${claseTotal}">${formatMoneda(total)}</td>
-          </tr>
-        </tbody>
+        <tbody>${filas}${filaTotal}</tbody>
       </table>
     </div>`;
 }
