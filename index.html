@@ -658,12 +658,15 @@ const CONFIG = {
   GOOGLE_CLIENT_ID: '922655936984-eb35rn1hu1855l6b4939qvvl286h7l10.apps.googleusercontent.com',
 
   // Rol de cada persona permitida (tiene que coincidir con el ROLES de Código.gs).
-  // 'admin': accede a todo (agregar, copiar, editar, eliminar).
-  // 'colaborador': solo puede agregar movimientos nuevos.
-  // 'sin_permisos': solo puede ver, ningún botón de acción.
+  // 'admin': accede a todo (agregar, copiar, editar, eliminar), ve los
+  //   movimientos de todos y la pestaña "Plata Actual".
+  // 'supervisor': ve los movimientos de todos y la pestaña "Plata Actual"
+  //   (como admin), pero solo puede agregar (como colaborador).
+  // 'colaborador': solo ve sus propios movimientos, y solo puede agregar.
+  // 'sin_permisos': solo puede ver (sus propios movimientos), ningún botón de acción.
   ROLES: {
     'nicolaspicconi@gmail.com': 'admin',
-    'alejandropicconi@gmail.com': 'colaborador',
+    'alejandropicconi@gmail.com': 'supervisor',
     'distribuidoradonpicconi@gmail.com': 'colaborador'
   },
 
@@ -746,13 +749,13 @@ let rolActual = null;
 let emailActual = '';
 
 function puedeAgregar(){
-  return rolActual === 'admin' || rolActual === 'colaborador';
+  return rolActual === 'admin' || rolActual === 'supervisor' || rolActual === 'colaborador';
 }
 function esAdmin(){
   return rolActual === 'admin';
 }
 function puedeVerPlataActual(){
-  return rolActual === 'admin';
+  return rolActual === 'admin' || rolActual === 'supervisor';
 }
 
 // Oculta/muestra la pestaña "Plata Actual" según el rol, y si el usuario
