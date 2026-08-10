@@ -1318,7 +1318,7 @@ searchEl.addEventListener('input', () => {
 });
 
 /* ============== Nuevo movimiento ============== */
-const SECCIONES = ['Personales', 'Empresa', 'Frigorífico', 'Banco', 'Sueldos', 'Granja', 'Repartos', 'Otros'];
+const SECCIONES = ['Frigorífico', 'Granja', 'Repartos', 'Personales', 'Empresa', 'Sueldos', 'Banco', 'Otros'];
 resumenSeccionEl.innerHTML += SECCIONES.map(s => `<option value="${s}">${s}</option>`).join('');
 const fabNuevo = document.getElementById('fab-nuevo');
 const fabAcciones = document.getElementById('fab-acciones');
