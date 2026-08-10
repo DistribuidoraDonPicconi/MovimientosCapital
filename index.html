@@ -1544,25 +1544,22 @@ btnGuardar.addEventListener('click', async () => {
   const seccion = nmSeccion.value.trim();
   const concepto = nmConcepto.value.trim();
 
-  if(!seccion && !concepto){
-    nuevoError.textContent = 'Completá al menos Categoría o Concepto.';
+  if(!seccion){
+    nuevoError.textContent = 'Seleccioná una categoría.';
+    return;
+  }
+  if(!concepto){
+    nuevoError.textContent = 'Completá el concepto.';
     return;
   }
 
   const productos = {};
-  let hayCantidad = false;
   document.querySelectorAll('#nm-productos-principales input').forEach(inp => {
     const val = inp.value.trim();
     if(val !== ''){
       productos[inp.dataset.producto] = limpiarCantidadParaEnvio(val);
-      hayCantidad = true;
     }
   });
-
-  if(!hayCantidad){
-    nuevoError.textContent = 'Cargá al menos la cantidad de un producto.';
-    return;
-  }
 
   const usuario = nmUsuario.value.trim();
 
