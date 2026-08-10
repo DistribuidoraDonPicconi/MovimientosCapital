@@ -288,6 +288,11 @@
   .lock-box #google-btn{
     display:flex; justify-content:center; margin-bottom:14px; min-height:44px;
   }
+  .lock-box .lock-switch-account{
+    display:inline-block; margin:0 0 6px; font-size:13.5px; font-weight:600;
+    color:var(--azul-osc); text-decoration:underline; cursor:pointer; background:none; border:none;
+  }
+  .lock-box .lock-switch-account:hover{ opacity:0.8; }
   .lock-box .lock-error{
     color:var(--rojo); font-size:14px; font-weight:600; margin-top:14px; min-height:16px;
   }
@@ -492,6 +497,7 @@
     <h2>Acceso restringido</h2>
     <p>Iniciá sesión con tu cuenta de Google</p>
     <div id="google-btn"></div>
+    <button type="button" class="lock-switch-account" id="btn-otra-cuenta">Usar otra cuenta de Google</button>
     <div class="lock-loading" id="lock-loading"></div>
     <div class="lock-error" id="lock-error"></div>
   </div>
@@ -812,6 +818,32 @@ function handleCredentialResponse(response){
   aplicarVisibilidadTabsPorRol();
   cargarDatos();
 }
+
+// Permite al usuario elegir una cuenta de Google distinta a la que Google
+// sugiere automáticamente. disableAutoSelect() borra la "cookie" que hace
+// que Google salte directo a "Continuar como X", así el próximo prompt()
+// muestra el selector de cuentas completo (con "Usar otra cuenta" incluido).
+document.getElementById('btn-otra-cuenta').addEventListener('click', () => {
+  idToken = null;
+  rolActual = null;
+  emailActual = '';
+  localStorage.removeItem(ID_TOKEN_KEY);
+  localStorage.removeItem(ID_TOKEN_EXP_KEY);
+  lockError.textContent = '';
+  if(window.google && google.accounts && google.accounts.id){
+    google.accounts.id.disableAutoSelect();
+    lockLoading.textContent = 'Elegí una cuenta de Google...';
+    google.accounts.id.prompt((notif) => {
+      lockLoading.textContent = '';
+      if(notif.isNotDisplayed && notif.isNotDisplayed()){
+        // Si Google no puede mostrar el selector flotante (por ejemplo,
+        // porque el navegador bloquea el One Tap), como respaldo abrimos
+        // el selector de cuentas de Google en una pestaña nueva.
+        window.open('https://accounts.google.com/AccountChooser', '_blank');
+      }
+    });
+  }
+});
 
 document.getElementById('btn-logout').addEventListener('click', () => {
   document.getElementById('confirm-modal').classList.remove('hidden');
