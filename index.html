@@ -1206,6 +1206,11 @@ const scrollState = {
   movimientos: { top: 0, left: 0 }
 };
 
+// Si está en true, la próxima vez que se restaure el scroll de Movimientos
+// se va directo al final (abajo a la izquierda) en vez de la posición previa.
+// Se usa justo después de guardar un movimiento nuevo.
+let irAlFondoMovimientos = false;
+
 function guardarScrollActual(){
   if(currentTab === 'movimientos'){
     const movScroll = document.getElementById('mov-scroll');
@@ -1224,8 +1229,14 @@ function restaurarScroll(){
   if(currentTab === 'movimientos'){
     const movScroll = document.getElementById('mov-scroll');
     if(movScroll){
-      movScroll.scrollTop = scrollState.movimientos.top;
-      movScroll.scrollLeft = scrollState.movimientos.left;
+      if(irAlFondoMovimientos){
+        movScroll.scrollTop = movScroll.scrollHeight;
+        movScroll.scrollLeft = 0;
+        irAlFondoMovimientos = false;
+      }else{
+        movScroll.scrollTop = scrollState.movimientos.top;
+        movScroll.scrollLeft = scrollState.movimientos.left;
+      }
     }
   }else if(currentTab === 'resumen'){
     mainEl.scrollTop = scrollState.resumen;
@@ -1385,6 +1396,7 @@ document.getElementById('confirm-eliminar-aceptar').addEventListener('click', as
 
     confirmEliminarModal.classList.add('hidden');
     idAEliminar = null;
+    irAlFondoMovimientos = true;
     await cargarDatos();
   }catch(err){
     alert('No se pudo eliminar: ' + err.message);
@@ -1595,6 +1607,7 @@ btnGuardar.addEventListener('click', async () => {
     }
 
     cerrarNuevoModal();
+    irAlFondoMovimientos = true;
     await cargarDatos();
   }catch(err){
     nuevoError.textContent = 'No se pudo guardar: ' + err.message;
