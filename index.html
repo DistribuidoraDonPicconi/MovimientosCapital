@@ -1239,6 +1239,7 @@ function render(){
   resumenControlsEl.classList.toggle('hidden', currentTab !== 'resumen');
   const filtro = currentTab === 'movimientos' ? searchEl.value.trim() : '';
   mainEl.classList.toggle('grid-mode', currentTab === 'movimientos');
+  fabNuevo.classList.toggle('hidden', currentTab !== 'movimientos' || !puedeAgregar());
   if(currentTab === 'stock'){
     headerTitle.textContent = 'Plata';
     renderStock();
@@ -1274,7 +1275,6 @@ function setTab(tab){
   document.getElementById('tab-stock').classList.toggle('active', tab === 'stock');
   document.getElementById('tab-mov').classList.toggle('active', tab === 'movimientos');
   document.getElementById('tab-resumen').classList.toggle('active', tab === 'resumen');
-  fabNuevo.classList.toggle('hidden', tab !== 'movimientos' || !puedeAgregar());
   deseleccionarFila();
   render();
 }
