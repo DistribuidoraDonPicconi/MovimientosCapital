@@ -1,9 +1,10 @@
 /* Service Worker - Plata Don Picconi */
-const CACHE_NAME = 'plata-dp-v1';
+const CACHE_NAME = 'plata-dp-v3';
 const APP_SHELL = [
   './',
   './index.html',
   './manifest.json',
+  './icon-180.png',
   './icon-192.png',
   './icon-512.png'
 ];
