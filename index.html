@@ -889,10 +889,11 @@ function esRespuestaNoEncontrado(data){
 }
 /* =============================================== */
 
-async function cargarDatos(){
+async function cargarDatos(forzar){
   btnRefresh.classList.add('spinning');
   try{
-    const url = CONFIG.APPS_SCRIPT_URL + '?id_token=' + encodeURIComponent(idToken || '');
+    let url = CONFIG.APPS_SCRIPT_URL + '?id_token=' + encodeURIComponent(idToken || '');
+    if(forzar) url += '&forzar=1';
     const resp = await fetch(url, {cache:'no-store'});
     if(!resp.ok) throw new Error('HTTP ' + resp.status);
     const data = await resp.json();
@@ -1320,7 +1321,10 @@ resumenHastaEl.addEventListener('change', () => { if(resumenRango === 'personali
 resumenSeccionEl.addEventListener('change', renderResumen);
 resumenConceptoEl.addEventListener('change', renderResumen);
 
-btnRefresh.addEventListener('click', cargarDatos);
+// El botón de sincronizar es una acción explícita: fuerza traer el dato
+// en vivo de la planilla (salteando la caché), por si alguien la editó
+// a mano desde fuera de la app.
+btnRefresh.addEventListener('click', () => cargarDatos(true));
 searchEl.addEventListener('input', () => {
   // al filtrar, arrancamos la vista de nuevo desde arriba
   scrollState.stock = 0;
@@ -1410,7 +1414,7 @@ document.getElementById('confirm-eliminar-aceptar').addEventListener('click', as
         confirmEliminarModal.classList.add('hidden');
         idAEliminar = null;
         alert('Ese movimiento ya no existe (alguien lo borró o editó desde otro dispositivo). Actualizando la lista...');
-        await cargarDatos();
+        await cargarDatos(true);
         return;
       }
       throw new Error(data.error);
@@ -1665,7 +1669,7 @@ btnGuardar.addEventListener('click', async () => {
       if(esRespuestaNoEncontrado(data)){
         cerrarNuevoModal();
         alert('Ese movimiento ya no existe (alguien lo borró o editó desde otro dispositivo). Actualizando la lista...');
-        await cargarDatos();
+        await cargarDatos(true);
         return;
       }
       throw new Error(data.error);
