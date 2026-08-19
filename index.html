@@ -16,6 +16,97 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 
+<!-- Firebase: Auth (para vincular el login de Google) + Firestore (base de datos) -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
+  import { getAuth, GoogleAuthProvider, signInWithCredential, signOut } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js";
+  import {
+    getFirestore, collection, getDocs, doc, setDoc, deleteDoc, query, where, orderBy, Timestamp
+  } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyCCDjHKaykhAxf4pG7aEJpp--tAvIRbmm8",
+    authDomain: "app-capital-639a1.firebaseapp.com",
+    projectId: "app-capital-639a1",
+    storageBucket: "app-capital-639a1.firebasestorage.app",
+    messagingSenderId: "1061998569269",
+    appId: "1:1061998569269:web:6e4fcc2bea660c258b0e7c"
+  };
+
+  const firebaseApp = initializeApp(firebaseConfig);
+  const firebaseAuth = getAuth(firebaseApp);
+  const db = getFirestore(firebaseApp);
+
+  // Expuestos en window porque el resto del código (fuera de este módulo)
+  // todavía es JS clásico, no un módulo — así lo puede usar sin import.
+  window.firebaseDb = db;
+  window.firebaseAuth = firebaseAuth;
+  window.firebaseSignOut = () => signOut(firebaseAuth);
+
+  // Toma el id_token que ya devuelve el login de Google (Google Identity
+  // Services) y lo usa para autenticar TAMBIÉN contra Firebase, sin pedir
+  // un segundo login. Así, request.auth en las reglas de Firestore queda
+  // disponible usando el mismo botón de Google que ya tenías.
+  window.firebaseSignInConCredencialGoogle = async (idToken) => {
+    const credential = GoogleAuthProvider.credential(idToken);
+    return signInWithCredential(firebaseAuth, credential);
+  };
+
+  // Convierte una fecha "YYYY-MM-DD" (medianoche LOCAL) a Timestamp de
+  // Firestore. Se guarda además de la fecha en texto porque las reglas de
+  // seguridad necesitan un Timestamp para poder comparar "últimos N días"
+  // (la vista restringida del rol "ayudante").
+  window.firestoreFechaATimestamp = (fechaStr) => {
+    if(!fechaStr) return Timestamp.now();
+    return Timestamp.fromDate(new Date(fechaStr + 'T00:00:00'));
+  };
+
+  // Trae los movimientos según el alcance que le corresponde al rol del
+  // usuario actual. Esto tiene que coincidir con lo que permiten las
+  // reglas de seguridad de Firestore (Reglas_Capital.txt): si la consulta
+  // no viene acotada de la misma forma que exige la regla, Firestore la
+  // rechaza entera (no devuelve "lo que sí se puede", deniega todo).
+  //   - {tipo:'todo'}: admin y supervisor, ven todos los movimientos.
+  //   - {tipo:'restringido', categoria, dias}: ayudante, solo esa categoría
+  //     y limitado a los últimos N días, pero de TODOS los usuarios.
+  //   - {tipo:'propio', email}: colaborador y sin_permisos, solo sus
+  //     propios movimientos.
+  window.firestoreLeerMovimientos = async (alcance) => {
+    let q;
+    if(alcance.tipo === 'todo'){
+      q = query(collection(db, "movimientos"), orderBy("fechaReal"));
+    }else if(alcance.tipo === 'restringido'){
+      const limite = new Date();
+      limite.setDate(limite.getDate() - alcance.dias);
+      q = query(
+        collection(db, "movimientos"),
+        where("seccion", "==", alcance.categoria),
+        where("fechaTS", ">=", Timestamp.fromDate(limite)),
+        orderBy("fechaTS")
+      );
+    }else{
+      q = query(
+        collection(db, "movimientos"),
+        where("usuario", "==", alcance.email),
+        orderBy("fechaReal")
+      );
+    }
+    const snap = await getDocs(q);
+    const out = [];
+    snap.forEach(d => out.push({ id: d.id, ...d.data() }));
+    return out;
+  };
+
+  // Crea o sobreescribe (si ya existe ese id) un documento en "movimientos".
+  window.firestoreGuardarMovimiento = async (id, datos) => {
+    await setDoc(doc(db, "movimientos", id), datos);
+  };
+
+  window.firestoreEliminarMovimiento = async (id) => {
+    await deleteDoc(doc(db, "movimientos", id));
+  };
+</script>
+
 <style>
   :root{
     --azul-osc: #16305c;
@@ -439,6 +530,8 @@
     box-shadow:0 2px 6px rgba(42,92,201,0.35);
   }
   .nm-seccion-btn:active{ opacity:0.85; }
+  .nm-seccion-btn.hidden{ display:none; }
+  #resumen-seccion option.hidden{ display:none; }
   .nuevo-productos-title{
     font-size:15.5px; font-weight:800; color:var(--azul-osc);
     margin:20px 0 8px; padding-top:14px; border-top:1px solid var(--linea);
@@ -517,7 +610,7 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
     </div>
     <h3>Eliminar movimiento</h3>
-    <p>Esta acción borra el movimiento de forma permanente, tanto de la app como del Google Sheet. No se puede deshacer.</p>
+    <p>Esta acción borra el movimiento de forma permanente. No se puede deshacer.</p>
     <div class="confirm-actions">
       <button class="btn-cancelar" id="confirm-eliminar-cancelar">Cancelar</button>
       <button class="btn-confirmar" id="confirm-eliminar-aceptar">Eliminar</button>
@@ -651,23 +744,31 @@
 <script>
 /* ============== CONFIGURACIÓN ============== */
 const CONFIG = {
-  // Pegá acá la URL de tu Web App de Apps Script (termina en /exec)
-  APPS_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbxVS2QFAFA5fng_dL3zFjNKrdCXHhPJ0doQhvOzN_-6zzHpfeRsU99CmR7-HfvYwSbS/exec',
-
-  // Client ID de OAuth de Google (tiene que ser el mismo que en Código.gs)
+  // Client ID de OAuth de Google (tiene que ser el mismo que en Reglas_Capital.txt)
   GOOGLE_CLIENT_ID: '922655936984-eb35rn1hu1855l6b4939qvvl286h7l10.apps.googleusercontent.com',
 
-  // Rol de cada persona permitida (tiene que coincidir con el ROLES de Código.gs).
+  // Rol de cada persona permitida (tiene que coincidir con la función rolDe() de Reglas_Capital.txt).
   // 'admin': accede a todo (agregar, copiar, editar, eliminar), ve los
   //   movimientos de todos y la pestaña "Plata Actual".
   // 'supervisor': ve los movimientos de todos y la pestaña "Plata Actual"
   //   (como admin), pero solo puede agregar (como colaborador).
   // 'colaborador': solo ve sus propios movimientos, y solo puede agregar.
+  // 'ayudante': solo puede agregar, y solo ve/carga la categoría definida
+  //   en ROLES_VISTA_RESTRINGIDA (de todos los usuarios, no solo la suya)
+  //   limitada a los últimos N días.
   // 'sin_permisos': solo puede ver (sus propios movimientos), ningún botón de acción.
   ROLES: {
     'nicolaspicconi@gmail.com': 'admin',
     'alejandropicconi@gmail.com': 'supervisor',
-    'distribuidoradonpicconi@gmail.com': 'colaborador'
+    'distribuidoradonpicconi@gmail.com': 'colaborador',
+    'santinopicconi@gmail.com': 'ayudante'
+  },
+
+  // Tiene que coincidir con la restricción de "ayudante" en Reglas_Capital.txt. Se usa acá
+  // solo para adaptar la interfaz (ej: mostrar un único botón de categoría);
+  // el filtro real de qué datos llegan lo hace siempre el servidor.
+  ROLES_VISTA_RESTRINGIDA: {
+    'ayudante': { categoria: 'Granja', dias: 14 }
   },
 
   // Nombre EXACTO de la columna de fecha a usar para ordenar / mostrar
@@ -749,7 +850,12 @@ let rolActual = null;
 let emailActual = '';
 
 function puedeAgregar(){
-  return rolActual === 'admin' || rolActual === 'supervisor' || rolActual === 'colaborador';
+  return rolActual === 'admin' || rolActual === 'supervisor' || rolActual === 'colaborador' || rolActual === 'ayudante';
+}
+
+// Devuelve la restricción de categoría/días del rol actual, o null si no tiene.
+function restriccionRolActual(){
+  return CONFIG.ROLES_VISTA_RESTRINGIDA[rolActual] || null;
 }
 function esAdmin(){
   return rolActual === 'admin';
@@ -768,10 +874,34 @@ function aplicarVisibilidadTabsPorRol(){
     currentTab = 'movimientos';
     document.getElementById('tab-mov').classList.add('active');
   }
+  aplicarRestriccionCategoriasPorRol();
+}
+
+// Para roles con vista restringida (ej: 'ayudante'): oculta en el grid de
+// categorías del modal "Nuevo movimiento" todos los botones salvo el
+// permitido, y recorta el <select> de categoría del Resumen a esa misma
+// categoría. El filtro real de qué datos llegan lo hace siempre el
+// servidor; esto es solo para no mostrar opciones que igual serían
+// rechazadas o no devolverían nada.
+function aplicarRestriccionCategoriasPorRol(){
+  const restr = restriccionRolActual();
+
+  if(nmSeccionGrid){
+    nmSeccionGrid.querySelectorAll('.nm-seccion-btn').forEach(btn => {
+      btn.classList.toggle('hidden', !!restr && btn.dataset.seccion !== restr.categoria);
+    });
+  }
+
+  if(resumenSeccionEl){
+    resumenSeccionEl.querySelectorAll('option[value]:not([value=""])').forEach(opt => {
+      opt.classList.toggle('hidden', !!restr && opt.value !== restr.categoria);
+      opt.disabled = !!restr && opt.value !== restr.categoria;
+    });
+  }
 }
 
 // Decodifica el JWT del login de Google solo para leer el email
-// (el chequeo real de validez se hace en el Apps Script).
+// (el chequeo real de validez lo hace Firebase Auth al autenticar).
 function decodificarJwt(token){
   try{
     const payload = token.split('.')[1];
@@ -813,7 +943,20 @@ function handleCredentialResponse(response){
   lockError.textContent = '';
   lockScreen.classList.add('hidden');
   aplicarVisibilidadTabsPorRol();
-  cargarDatos();
+
+  // Autentica también contra Firebase con el mismo token de Google, para
+  // que las reglas de Firestore (request.auth) dejen pasar a este usuario.
+  // Si falla, se muestra la pantalla de login de nuevo: sin esto Firestore
+  // va a rechazar todas las lecturas/escrituras.
+  if(window.firebaseSignInConCredencialGoogle){
+    window.firebaseSignInConCredencialGoogle(idToken).then(() => {
+      cargarDatos();
+    }).catch((err) => {
+      mostrarPantallaLogin('No se pudo autenticar con Firebase.<br>' + (err && err.message ? err.message : ''));
+    });
+  }else{
+    cargarDatos();
+  }
 }
 
 document.getElementById('btn-logout').addEventListener('click', () => {
@@ -826,6 +969,7 @@ document.getElementById('confirm-cancelar').addEventListener('click', () => {
 
 document.getElementById('confirm-aceptar').addEventListener('click', () => {
   document.getElementById('confirm-modal').classList.add('hidden');
+  if(window.firebaseSignOut){ window.firebaseSignOut().catch(() => {}); }
   mostrarPantallaLogin('');
 });
 
@@ -851,7 +995,17 @@ window.addEventListener('load', function(){
     emailActual = String((payloadGuardado && payloadGuardado.email) || '');
     lockScreen.classList.add('hidden');
     aplicarVisibilidadTabsPorRol();
-    cargarDatos();
+    if(window.firebaseSignInConCredencialGoogle){
+      window.firebaseSignInConCredencialGoogle(idToken).then(() => {
+        cargarDatos();
+      }).catch(() => {
+        // El token guardado ya venció para Firebase (dura ~1hs): se pide
+        // login de nuevo en vez de mostrar una app que no puede leer datos.
+        mostrarPantallaLogin('Tu sesión venció.<br>Iniciá sesión de nuevo.');
+      });
+    }else{
+      cargarDatos();
+    }
   }else if(window.google && google.accounts && google.accounts.id){
     lockLoading.textContent = 'Buscando sesión de Google...';
     google.accounts.id.prompt((notif) => {
@@ -860,7 +1014,7 @@ window.addEventListener('load', function(){
   }
 });
 
-// Maneja una respuesta del Apps Script que indica que el token no es
+// Maneja el caso en que Firestore/Firebase indica que el token no es
 // válido o que el email no está en la lista permitida.
 function esRespuestaNoAutorizada(data){
   if(data && data.auth === true){
@@ -870,44 +1024,52 @@ function esRespuestaNoAutorizada(data){
   return false;
 }
 
-// A diferencia de esRespuestaNoAutorizada (token inválido/vencido), esto es
-// para cuando el login es válido pero el rol no permite esa acción puntual.
-function esRespuestaSinPermiso(data){
-  if(data && data.sinPermiso === true){
-    alert('Tu usuario no tiene permiso para hacer esto.');
-    return true;
-  }
-  return false;
+/* =============================================== */
+
+// Convierte un documento de Firestore ({id, usuario, fechaReal, fecha,
+// seccion, concepto, notas, productos:{...}}) al mismo formato plano tipo
+// "fila de planilla" que usa el resto de la app (ID, Usuario, Fecha, etc).
+// Así calcularStock(), render() y todo lo demás siguen funcionando igual
+// que cuando los datos venían del Google Sheet.
+function firestoreDocAFilaPlana_(docData){
+  const fila = {
+    'ID': docData.id,
+    'Usuario': docData.usuario || '',
+    'Fecha Real': docData.fechaReal || '',
+    'Fecha': docData.fecha ? new Date(docData.fecha + 'T00:00:00').toISOString() : '',
+    'Categoría': docData.seccion || '',
+    'Concepto': docData.concepto || '',
+    'Notas': docData.notas || ''
+  };
+  CONFIG.PRODUCTOS.forEach(p => {
+    const val = docData.productos ? docData.productos[p] : undefined;
+    fila[p] = (val === undefined || val === null) ? '' : val;
+  });
+  return fila;
 }
 
-// El servidor devuelve este mensaje cuando se intenta editar/eliminar una
-// fila cuyo ID ya no existe en la planilla — típicamente porque otra
-// persona (u otro dispositivo) la borró o la editó justo antes. En ese
-// caso conviene refrescar solo, en vez de mostrar un error genérico.
-function esRespuestaNoEncontrado(data){
-  return !!(data && typeof data.error === 'string' && data.error.indexOf('No se encontró el registro') !== -1);
+// Determina con qué alcance hay que consultar Firestore según el rol
+// actual (tiene que coincidir con lo que validan las reglas de seguridad).
+function alcanceActual(){
+  const restr = CONFIG.ROLES_VISTA_RESTRINGIDA[rolActual];
+  if(restr) return { tipo: 'restringido', categoria: restr.categoria, dias: restr.dias };
+  if(rolActual === 'admin' || rolActual === 'supervisor') return { tipo: 'todo' };
+  return { tipo: 'propio', email: emailActual };
 }
-/* =============================================== */
 
 async function cargarDatos(forzar){
   btnRefresh.classList.add('spinning');
   try{
-    let url = CONFIG.APPS_SCRIPT_URL + '?id_token=' + encodeURIComponent(idToken || '');
-    if(forzar) url += '&forzar=1';
-    const resp = await fetch(url, {cache:'no-store'});
-    if(!resp.ok) throw new Error('HTTP ' + resp.status);
-    const data = await resp.json();
-    if(data && data.error){
-      movimientos = [];
-      if(esRespuestaNoAutorizada(data)) return;
-      mainEl.innerHTML = `<div class="state-msg error">No se pudieron cargar los datos: ${data.error}</div>`;
-      return;
-    }
-    movimientos = data;
+    const docs = await window.firestoreLeerMovimientos(alcanceActual());
+    movimientos = docs.map(firestoreDocAFilaPlana_);
     if(currentTab === 'movimientos') irAlFondoMovimientos = true;
     render();
   }catch(err){
-    mainEl.innerHTML = `<div class="state-msg error">No se pudo cargar el Google Sheet.<br>${err.message}<br><br>Revisá que CONFIG.APPS_SCRIPT_URL esté bien configurada.</div>`;
+    if(err && err.code === 'permission-denied'){
+      esRespuestaNoAutorizada({auth: true});
+      return;
+    }
+    mainEl.innerHTML = `<div class="state-msg error">No se pudieron cargar los datos.<br>${err.message}</div>`;
   }finally{
     btnRefresh.classList.remove('spinning');
   }
@@ -1321,9 +1483,8 @@ resumenHastaEl.addEventListener('change', () => { if(resumenRango === 'personali
 resumenSeccionEl.addEventListener('change', renderResumen);
 resumenConceptoEl.addEventListener('change', renderResumen);
 
-// El botón de sincronizar es una acción explícita: fuerza traer el dato
-// en vivo de la planilla (salteando la caché), por si alguien la editó
-// a mano desde fuera de la app.
+// El botón de sincronizar vuelve a pedirle los datos a Firestore (que
+// siempre lee en vivo, sin caché intermedia).
 btnRefresh.addEventListener('click', () => cargarDatos(true));
 searchEl.addEventListener('input', () => {
   // al filtrar, arrancamos la vista de nuevo desde arriba
@@ -1394,31 +1555,7 @@ document.getElementById('confirm-eliminar-aceptar').addEventListener('click', as
   btnAceptar.disabled = true;
   btnAceptar.textContent = 'Eliminando...';
   try{
-    const resp = await fetch(CONFIG.APPS_SCRIPT_URL, {
-      method: 'POST',
-      body: JSON.stringify({ accion: 'eliminar', id: idBorrar, idToken: idToken || '' })
-    });
-    const data = await resp.json();
-    if(data && data.error){
-      if(esRespuestaNoAutorizada(data)){
-        confirmEliminarModal.classList.add('hidden');
-        idAEliminar = null;
-        return;
-      }
-      if(esRespuestaSinPermiso(data)){
-        confirmEliminarModal.classList.add('hidden');
-        idAEliminar = null;
-        return;
-      }
-      if(esRespuestaNoEncontrado(data)){
-        confirmEliminarModal.classList.add('hidden');
-        idAEliminar = null;
-        alert('Ese movimiento ya no existe (alguien lo borró o editó desde otro dispositivo). Actualizando la lista...');
-        await cargarDatos(true);
-        return;
-      }
-      throw new Error(data.error);
-    }
+    await window.firestoreEliminarMovimiento(idBorrar);
 
     movimientos = movimientos.filter(m => String(m['ID']) !== String(idBorrar));
     if(currentTab === 'movimientos') irAlFondoMovimientos = true;
@@ -1427,6 +1564,12 @@ document.getElementById('confirm-eliminar-aceptar').addEventListener('click', as
     idAEliminar = null;
     render();
   }catch(err){
+    if(err && err.code === 'permission-denied'){
+      confirmEliminarModal.classList.add('hidden');
+      idAEliminar = null;
+      alert('Tu usuario no tiene permiso para hacer esto.');
+      return;
+    }
     alert('No se pudo eliminar: ' + err.message);
   }finally{
     btnAceptar.disabled = false;
@@ -1551,7 +1694,8 @@ function abrirNuevoModal(mov, modoEditar){
   nmEditId.value = (precargar && modoEditar) ? (mov['ID'] || '') : '';
   nuevoTitulo.textContent = modoEditar ? 'Editar movimiento' : (precargar ? 'Copiar movimiento' : 'Nuevo movimiento');
 
-  seleccionarSeccion(precargar ? (mov['Categoría'] || '') : '');
+  const restrCategorias = restriccionRolActual();
+  seleccionarSeccion(precargar ? (mov['Categoría'] || '') : (restrCategorias ? restrCategorias.categoria : ''));
   nmConcepto.value = precargar ? (mov['Concepto'] || '') : '';
   nmNotas.value = precargar ? (mov['Notas'] || '') : '';
   nmUsuario.value = emailActual;
@@ -1576,9 +1720,9 @@ function cerrarNuevoModal(){
 }
 
 // Construye el objeto de movimiento con las mismas claves y el mismo
-// formato de fecha (ISO) que devuelve el Google Sheet, a partir de lo que
-// se acaba de guardar. Se usa para actualizar la lista en memoria sin
-// tener que pedirle todo de nuevo al servidor.
+// formato de fecha (ISO) que usa firestoreDocAFilaPlana_, a partir de lo
+// que se acaba de guardar. Se usa para actualizar la lista en memoria sin
+// tener que pedirle todo de nuevo a Firestore.
 function construirMovimientoLocal(payload, idFinal, movOriginal){
   const productosNum = {};
   CONFIG.PRODUCTOS.forEach(p => {
@@ -1645,37 +1789,40 @@ btnGuardar.addEventListener('click', async () => {
     fecha: nmFecha.value,
     productos
   };
-  if(nmEditId.value) payload.id = nmEditId.value;
-  payload.idToken = idToken || '';
+  const esEdicion = !!nmEditId.value;
+  const idFinal = esEdicion ? nmEditId.value : (crypto.randomUUID().split('-')[0]);
 
   btnGuardar.disabled = true;
   btnGuardar.textContent = 'Guardando...';
 
   try{
-    const resp = await fetch(CONFIG.APPS_SCRIPT_URL, {
-      method: 'POST',
-      body: JSON.stringify(payload)
+    // Mismo formato que se usa al migrar los datos existentes a Firestore:
+    // id + usuario/fecha/seccion/concepto/notas + productos anidados, más
+    // fechaTS (Timestamp) para que la vista restringida del rol "ayudante"
+    // pueda filtrar por los últimos N días desde las reglas de seguridad.
+    const docFirestore = {
+      id: idFinal,
+      usuario: payload.usuario,
+      fechaReal: esEdicion
+        ? ((movEnEdicion && movEnEdicion['Fecha Real']) || new Date().toISOString())
+        : new Date().toISOString(),
+      fecha: payload.fecha,
+      fechaTS: window.firestoreFechaATimestamp(payload.fecha),
+      seccion: payload.seccion,
+      concepto: payload.concepto,
+      notas: payload.notas,
+      productos: {}
+    };
+    CONFIG.PRODUCTOS.forEach(p => {
+      const val = productos[p];
+      if(val !== undefined && val !== null && val !== ''){
+        const num = parseFloat(String(val).replace(',', '.'));
+        if(!isNaN(num)) docFirestore.productos[p] = num;
+      }
     });
-    const data = await resp.json();
-    if(data && data.error){
-      if(esRespuestaNoAutorizada(data)){
-        cerrarNuevoModal();
-        return;
-      }
-      if(esRespuestaSinPermiso(data)){
-        cerrarNuevoModal();
-        return;
-      }
-      if(esRespuestaNoEncontrado(data)){
-        cerrarNuevoModal();
-        alert('Ese movimiento ya no existe (alguien lo borró o editó desde otro dispositivo). Actualizando la lista...');
-        await cargarDatos(true);
-        return;
-      }
-      throw new Error(data.error);
-    }
 
-    const idFinal = (data && data.id) ? data.id : nmEditId.value;
+    await window.firestoreGuardarMovimiento(idFinal, docFirestore);
+
     const movGuardado = construirMovimientoLocal(payload, idFinal, movEnEdicion);
     const idx = movimientos.findIndex(m => String(m['ID']) === String(idFinal));
     if(idx !== -1){
@@ -1688,6 +1835,11 @@ btnGuardar.addEventListener('click', async () => {
     cerrarNuevoModal();
     render();
   }catch(err){
+    if(err && err.code === 'permission-denied'){
+      cerrarNuevoModal();
+      alert('Tu usuario no tiene permiso para hacer esto.');
+      return;
+    }
     nuevoError.textContent = 'No se pudo guardar: ' + err.message;
   }finally{
     btnGuardar.disabled = false;
