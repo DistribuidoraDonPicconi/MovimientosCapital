@@ -1463,6 +1463,11 @@ function setTab(tab){
   document.getElementById('tab-resumen').classList.toggle('active', tab === 'resumen');
   deseleccionarFila();
   render();
+  // Solo sincronizamos automático al entrar a "Plata Actual", como si se
+  // apretara el botón Actualizar. En Movimientos y Resumen se usa el dato
+  // ya cargado (hay que tocar el botón de sincronizar a mano si hace
+  // falta refrescar).
+  if(tab === 'stock') cargarDatos(true);
 }
 
 document.getElementById('tab-stock').addEventListener('click', () => setTab('stock'));
