@@ -1,7 +1,7 @@
 {
-  "name": "Plata - Distribuidora Don Picconi",
-  "short_name": "Plata DP",
-  "description": "Control de plata (Efectivo/Cheque/Banco) y movimientos - Distribuidora Don Picconi",
+  "name": "Capital - Distribuidora Don Picconi",
+  "short_name": "Capital DP",
+  "description": "Control de capital (Efectivo/Cheque/Banco) - Distribuidora Don Picconi",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
