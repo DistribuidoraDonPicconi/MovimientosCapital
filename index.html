@@ -864,14 +864,28 @@ function puedeVerPlataActual(){
   return rolActual === 'admin' || rolActual === 'supervisor';
 }
 
-// Oculta/muestra la pestaña "Plata Actual" según el rol, y si el usuario
-// no tiene permiso y esa pestaña había quedado como la actual (por ejemplo
-// currentTab arranca en 'stock'), lo manda a "Movimientos" en su lugar.
+// 'colaborador' tampoco ve la pestaña "Resumen" (solo carga movimientos y
+// ve los propios); el resto de los roles con acceso a la app sí la ve.
+function puedeVerResumen(){
+  return rolActual !== 'colaborador';
+}
+
+// Oculta/muestra las pestañas "Plata Actual" y "Resumen" según el rol, y
+// si el usuario no tiene permiso sobre la pestaña que había quedado como
+// actual (por ejemplo currentTab arranca en 'stock'), lo manda a
+// "Movimientos" en su lugar.
 function aplicarVisibilidadTabsPorRol(){
   const tabStockEl = document.getElementById('tab-stock');
+  const tabResumenEl = document.getElementById('tab-resumen');
   tabStockEl.classList.toggle('hidden', !puedeVerPlataActual());
-  if(!puedeVerPlataActual() && currentTab === 'stock'){
+  tabResumenEl.classList.toggle('hidden', !puedeVerResumen());
+  if(
+    (!puedeVerPlataActual() && currentTab === 'stock') ||
+    (!puedeVerResumen() && currentTab === 'resumen')
+  ){
     currentTab = 'movimientos';
+    document.getElementById('tab-stock').classList.remove('active');
+    document.getElementById('tab-resumen').classList.remove('active');
     document.getElementById('tab-mov').classList.add('active');
   }
   aplicarRestriccionCategoriasPorRol();
