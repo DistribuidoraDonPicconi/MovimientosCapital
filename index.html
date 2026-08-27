@@ -67,31 +67,42 @@
   // no viene acotada de la misma forma que exige la regla, Firestore la
   // rechaza entera (no devuelve "lo que sí se puede", deniega todo).
   //   - {tipo:'todo'}: admin y supervisor, ven todos los movimientos.
-  //   - {tipo:'restringido', categoria, dias}: ayudante, solo esa categoría
-  //     y limitado a los últimos N días, pero de TODOS los usuarios.
+  //   - {tipo:'ayudante', categoria, email}: ayudante. La regla es un OR de
+  //     dos condiciones (propios, de cualquier categoría, O de la
+  //     categoría restringida pero de CUALQUIER usuario, sin límite de
+  //     fecha), así que hacen falta dos consultas separadas que después
+  //     se combinan sin duplicados.
   //   - {tipo:'propio', email}: colaborador y sin_permisos, solo sus
   //     propios movimientos.
   window.firestoreLeerMovimientos = async (alcance) => {
-    let q;
     if(alcance.tipo === 'todo'){
-      q = query(collection(db, "movimientos"), orderBy("fechaReal"));
-    }else if(alcance.tipo === 'restringido'){
-      const limite = new Date();
-      limite.setDate(limite.getDate() - alcance.dias);
-      q = query(
-        collection(db, "movimientos"),
-        where("seccion", "==", alcance.categoria),
-        where("fechaTS", ">=", Timestamp.fromDate(limite)),
-        orderBy("fechaTS")
-      );
-    }else{
-      q = query(
+      const snap = await getDocs(query(collection(db, "movimientos"), orderBy("fechaReal")));
+      const out = [];
+      snap.forEach(d => out.push({ id: d.id, ...d.data() }));
+      return out;
+    }
+    if(alcance.tipo === 'ayudante'){
+      const qPropios = query(
         collection(db, "movimientos"),
         where("usuario", "==", alcance.email),
         orderBy("fechaReal")
       );
+      const qCategoria = query(
+        collection(db, "movimientos"),
+        where("seccion", "==", alcance.categoria),
+        orderBy("fechaReal")
+      );
+      const [snapPropios, snapCategoria] = await Promise.all([getDocs(qPropios), getDocs(qCategoria)]);
+      const porId = new Map();
+      snapPropios.forEach(d => porId.set(d.id, { id: d.id, ...d.data() }));
+      snapCategoria.forEach(d => porId.set(d.id, { id: d.id, ...d.data() }));
+      return Array.from(porId.values()).sort((a, b) => new Date(a.fechaReal) - new Date(b.fechaReal));
     }
-    const snap = await getDocs(q);
+    const snap = await getDocs(query(
+      collection(db, "movimientos"),
+      where("usuario", "==", alcance.email),
+      orderBy("fechaReal")
+    ));
     const out = [];
     snap.forEach(d => out.push({ id: d.id, ...d.data() }));
     return out;
@@ -752,10 +763,12 @@ const CONFIG = {
   //   movimientos de todos y la pestaña "Plata Actual".
   // 'supervisor': ve los movimientos de todos y la pestaña "Plata Actual"
   //   (como admin), pero solo puede agregar (como colaborador).
-  // 'colaborador': solo ve sus propios movimientos, y solo puede agregar.
-  // 'ayudante': solo puede agregar, y solo ve/carga la categoría definida
-  //   en ROLES_VISTA_RESTRINGIDA (de todos los usuarios, no solo la suya)
-  //   limitada a los últimos N días.
+  // 'colaborador': solo ve sus propios movimientos (cualquier categoría),
+  //   y solo puede agregar (a su propio nombre, cualquier categoría).
+  // 'ayudante': solo puede agregar (a su propio nombre, cualquier
+  //   categoría). Ve sus propios movimientos (cualquier categoría) MÁS
+  //   los movimientos de CUALQUIER usuario en la categoría definida en
+  //   ROLES_VISTA_RESTRINGIDA, sin límite de fecha.
   // 'sin_permisos': solo puede ver (sus propios movimientos), ningún botón de acción.
   ROLES: {
     'nicolaspicconi@gmail.com': 'admin',
@@ -764,11 +777,14 @@ const CONFIG = {
     'santinopicconi@gmail.com': 'ayudante'
   },
 
-  // Tiene que coincidir con la restricción de "ayudante" en Reglas_Capital.txt. Se usa acá
-  // solo para adaptar la interfaz (ej: mostrar un único botón de categoría);
-  // el filtro real de qué datos llegan lo hace siempre el servidor.
+  // Categoría de "vista extendida" del rol "ayudante": además de sus
+  // propios movimientos, puede LEER (de cualquier usuario, sin límite de
+  // fecha) los movimientos de esta categoría. Tiene que coincidir con la
+  // condición esAyudante() && seccion == 'Granja' de Reglas_Capital.txt.
+  // Ya no limita en qué categoría puede CARGAR movimientos nuevos: eso es
+  // libre (como para supervisor/colaborador), según la regla de "create".
   ROLES_VISTA_RESTRINGIDA: {
-    'ayudante': { categoria: 'Granja', dias: 14 }
+    'ayudante': { categoria: 'Granja' }
   },
 
   // Nombre EXACTO de la columna de fecha a usar para ordenar / mostrar
@@ -887,30 +903,6 @@ function aplicarVisibilidadTabsPorRol(){
     document.getElementById('tab-stock').classList.remove('active');
     document.getElementById('tab-resumen').classList.remove('active');
     document.getElementById('tab-mov').classList.add('active');
-  }
-  aplicarRestriccionCategoriasPorRol();
-}
-
-// Para roles con vista restringida (ej: 'ayudante'): oculta en el grid de
-// categorías del modal "Nuevo movimiento" todos los botones salvo el
-// permitido, y recorta el <select> de categoría del Resumen a esa misma
-// categoría. El filtro real de qué datos llegan lo hace siempre el
-// servidor; esto es solo para no mostrar opciones que igual serían
-// rechazadas o no devolverían nada.
-function aplicarRestriccionCategoriasPorRol(){
-  const restr = restriccionRolActual();
-
-  if(nmSeccionGrid){
-    nmSeccionGrid.querySelectorAll('.nm-seccion-btn').forEach(btn => {
-      btn.classList.toggle('hidden', !!restr && btn.dataset.seccion !== restr.categoria);
-    });
-  }
-
-  if(resumenSeccionEl){
-    resumenSeccionEl.querySelectorAll('option[value]:not([value=""])').forEach(opt => {
-      opt.classList.toggle('hidden', !!restr && opt.value !== restr.categoria);
-      opt.disabled = !!restr && opt.value !== restr.categoria;
-    });
   }
 }
 
@@ -1085,7 +1077,7 @@ function firestoreDocAFilaPlana_(docData){
 // actual (tiene que coincidir con lo que validan las reglas de seguridad).
 function alcanceActual(){
   const restr = CONFIG.ROLES_VISTA_RESTRINGIDA[rolActual];
-  if(restr) return { tipo: 'restringido', categoria: restr.categoria, dias: restr.dias };
+  if(restr) return { tipo: 'ayudante', categoria: restr.categoria, email: emailActual };
   if(rolActual === 'admin' || rolActual === 'supervisor') return { tipo: 'todo' };
   return { tipo: 'propio', email: emailActual };
 }
@@ -1729,6 +1721,9 @@ function abrirNuevoModal(mov, modoEditar){
   nmEditId.value = (precargar && modoEditar) ? (mov['ID'] || '') : '';
   nuevoTitulo.textContent = modoEditar ? 'Editar movimiento' : (precargar ? 'Copiar movimiento' : 'Nuevo movimiento');
 
+  // Para 'ayudante', preselecciona su categoría de vista extendida (ej:
+  // 'Granja') solo como comodidad; puede cambiarla, ya que ahora puede
+  // cargar movimientos nuevos en cualquier categoría.
   const restrCategorias = restriccionRolActual();
   seleccionarSeccion(precargar ? (mov['Categoría'] || '') : (restrCategorias ? restrCategorias.categoria : ''));
   nmConcepto.value = precargar ? (mov['Concepto'] || '') : '';
@@ -1833,8 +1828,9 @@ btnGuardar.addEventListener('click', async () => {
   try{
     // Mismo formato que se usa al migrar los datos existentes a Firestore:
     // id + usuario/fecha/seccion/concepto/notas + productos anidados, más
-    // fechaTS (Timestamp) para que la vista restringida del rol "ayudante"
-    // pueda filtrar por los últimos N días desde las reglas de seguridad.
+    // fechaTS (Timestamp), que ya no se usa para filtrar (la regla actual
+    // no limita por fecha) pero se mantiene por compatibilidad con datos
+    // existentes.
     const docFirestore = {
       id: idFinal,
       usuario: payload.usuario,
