@@ -15,6 +15,7 @@
 <link rel="icon" href="icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="icon-180.png">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 <!-- Firebase: Auth (para vincular el login de Google) + Firestore (base de datos) -->
 <script type="module">
@@ -693,6 +694,9 @@
         <div class="sub">Distribuidora Don Picconi</div>
       </div>
       <div style="display:flex; gap:22px;">
+        <button class="icon-btn hidden" id="btn-exportar" aria-label="Descargar Excel">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
         <button class="icon-btn" id="btn-refresh" aria-label="Actualizar">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
         </button>
@@ -803,6 +807,7 @@ const searchEl = document.getElementById('search');
 const searchWrapEl = document.getElementById('search-wrap');
 const headerTitle = document.getElementById('header-title');
 const btnRefresh = document.getElementById('btn-refresh');
+const btnExportar = document.getElementById('btn-exportar');
 const appEl = document.getElementById('app');
 const resumenControlsEl = document.getElementById('resumen-controls');
 const resumenPersonalizadoEl = document.getElementById('resumen-personalizado');
@@ -876,6 +881,12 @@ function restriccionRolActual(){
 function esAdmin(){
   return rolActual === 'admin';
 }
+
+// Muestra el botón de exportar a Excel solo para admin y solo en la
+// pestaña "Movimientos".
+function actualizarVisibilidadExportar(){
+  btnExportar.classList.toggle('hidden', currentTab !== 'movimientos' || !esAdmin());
+}
 function puedeVerPlataActual(){
   return rolActual === 'admin' || rolActual === 'supervisor';
 }
@@ -904,6 +915,7 @@ function aplicarVisibilidadTabsPorRol(){
     document.getElementById('tab-resumen').classList.remove('active');
     document.getElementById('tab-mov').classList.add('active');
   }
+  actualizarVisibilidadExportar();
 }
 
 // Decodifica el JWT del login de Google solo para leer el email
@@ -1484,6 +1496,7 @@ function setTab(tab){
   document.getElementById('tab-mov').classList.toggle('active', tab === 'movimientos');
   document.getElementById('tab-resumen').classList.toggle('active', tab === 'resumen');
   deseleccionarFila();
+  actualizarVisibilidadExportar();
   render();
   // Solo sincronizamos automático al entrar a "Plata Actual", como si se
   // apretara el botón Actualizar. En Movimientos y Resumen se usa el dato
@@ -1519,6 +1532,79 @@ searchEl.addEventListener('input', () => {
   scrollState.movimientos = { top: 0, left: 0 };
   render();
 });
+
+/* ============== Exportar Movimientos a Excel ============== */
+
+// Arma el mismo listado que se ve en pantalla (respetando el buscador)
+// y lo baja como .xlsx, listo para importar en Excel.
+function filasParaExportar(){
+  const filtro = searchEl.value.trim().toLowerCase();
+  return movimientos
+    .filter(mov => {
+      if(!filtro) return true;
+      const texto = `${mov['Concepto']||''} ${mov['Categoría']||''} ${mov['Notas']||''} ${mov['Usuario']||''}`.toLowerCase();
+      return texto.includes(filtro);
+    })
+    .map(mov => {
+      const fila = {
+        'Fecha': formatFecha(mov[CONFIG.CAMPO_FECHA]),
+        'Categoría': mov['Categoría'] || '',
+        'Concepto': mov['Concepto'] || ''
+      };
+      CONFIG.PRODUCTOS.forEach(p => { fila[p] = parseFloat(mov[p]) || 0; });
+      fila['Total'] = totalMovimiento(mov);
+      fila['Usuario'] = mov['Usuario'] || '';
+      fila['Notas'] = mov['Notas'] || '';
+      return fila;
+    });
+}
+
+async function exportarMovimientosExcel(){
+  if(btnExportar.classList.contains('spinning')) return;
+  const filas = filasParaExportar();
+  if(!filas.length){
+    alert('No hay movimientos para exportar.');
+    return;
+  }
+  btnExportar.classList.add('spinning');
+  try{
+    const hoja = XLSX.utils.json_to_sheet(filas);
+    const libro = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(libro, hoja, 'Movimientos');
+    const hoy = fechaLocalInput(new Date());
+    const nombreArchivo = `Movimientos_DonPicconi_${hoy}.xlsx`;
+    const buffer = XLSX.write(libro, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const archivo = new File([blob], nombreArchivo, { type: blob.type });
+
+    // En celular: abre el panel de compartir del sistema (ahí se puede
+    // elegir WhatsApp). En PC (o si el navegador no lo soporta), se baja
+    // directo el archivo.
+    if(navigator.canShare && navigator.canShare({ files: [archivo] })){
+      try{
+        await navigator.share({ files: [archivo], title: nombreArchivo });
+        return;
+      }catch(err){
+        // Si el usuario cancela el panel de compartir, no hacemos nada más.
+        if(err && err.name === 'AbortError') return;
+      }
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = nombreArchivo;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }catch(err){
+    alert('No se pudo generar el Excel: ' + err.message);
+  }finally{
+    btnExportar.classList.remove('spinning');
+  }
+}
+
+btnExportar.addEventListener('click', exportarMovimientosExcel);
 
 /* ============== Nuevo movimiento ============== */
 const SECCIONES = ['Frigorífico', 'Granja', 'Repartos', 'Personales', 'Empresa', 'Sueldos', 'Banco', 'Otros'];
