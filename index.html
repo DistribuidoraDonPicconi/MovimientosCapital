@@ -1560,6 +1560,15 @@ function filasParaExportar(){
     });
 }
 
+// Detecta celular (Android/iPhone), donde el "compartir con archivo" del
+// navegador abre el menú nativo con WhatsApp como opción y funciona bien.
+// En PC, ese mismo compartir nativo abre un panel pensado para otra cosa
+// y corta la descarga antes de poder elegir dónde guardarla, así que ahí
+// directamente se descarga el archivo.
+function esMovil(){
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+}
+
 async function exportarMovimientosExcel(){
   if(btnExportar.classList.contains('spinning')) return;
   const filas = filasParaExportar();
@@ -1581,7 +1590,7 @@ async function exportarMovimientosExcel(){
     // En celular: abre el panel de compartir del sistema (ahí se puede
     // elegir WhatsApp). En PC (o si el navegador no lo soporta), se baja
     // directo el archivo.
-    if(navigator.canShare && navigator.canShare({ files: [archivo] })){
+    if(esMovil() && navigator.canShare && navigator.canShare({ files: [archivo] })){
       try{
         await navigator.share({ files: [archivo], title: nombreArchivo });
         return;
@@ -1597,7 +1606,10 @@ async function exportarMovimientosExcel(){
     document.body.appendChild(a);
     a.click();
     a.remove();
-    URL.revokeObjectURL(url);
+    // Se demora un toque el revoke: si se libera la URL en el mismo instante
+    // del click, en algunos navegadores el diálogo de "Guardar como" llega a
+    // abrirse sin datos detrás y la descarga queda vacía o se corta.
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
   }catch(err){
     alert('No se pudo generar el Excel: ' + err.message);
   }finally{
