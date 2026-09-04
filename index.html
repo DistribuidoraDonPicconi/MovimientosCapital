@@ -1375,6 +1375,7 @@ function renderMovimientos(filtro){
         <td>${mov['Concepto'] || '-'}</td>
         ${celdasProducto}
         <td class="num ${clsTotal}">${formatMoneda(total)}</td>
+        <td>${mov['Notas'] || '-'}</td>
         <td>${mov['Usuario'] || '-'}</td>
       </tr>`;
     }).join('');
@@ -1394,7 +1395,7 @@ function renderMovimientos(filtro){
             <tr>
               <th>Fecha</th><th>Categoría</th><th>Concepto</th>
               ${headerProductos}
-              <th>Total</th><th>Usuario</th>
+              <th>Total</th><th>Notas</th><th>Usuario</th>
             </tr>
           </thead>
           <tbody>${filas}</tbody>
@@ -1554,8 +1555,8 @@ function filasParaExportar(){
       };
       CONFIG.PRODUCTOS.forEach(p => { fila[p] = parseFloat(mov[p]) || 0; });
       fila['Total'] = totalMovimiento(mov);
-      fila['Usuario'] = mov['Usuario'] || '';
       fila['Notas'] = mov['Notas'] || '';
+      fila['Usuario'] = mov['Usuario'] || '';
       return fila;
     });
 }
