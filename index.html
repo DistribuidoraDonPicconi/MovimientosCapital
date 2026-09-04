@@ -68,11 +68,12 @@
   // no viene acotada de la misma forma que exige la regla, Firestore la
   // rechaza entera (no devuelve "lo que sí se puede", deniega todo).
   //   - {tipo:'todo'}: admin y supervisor, ven todos los movimientos.
-  //   - {tipo:'ayudante', categoria, email}: ayudante. La regla es un OR de
-  //     dos condiciones (propios, de cualquier categoría, O de la
-  //     categoría restringida pero de CUALQUIER usuario, sin límite de
-  //     fecha), así que hacen falta dos consultas separadas que después
-  //     se combinan sin duplicados.
+  //   - {tipo:'ayudante', categoria, email}: ayudante. Solo ve sus PROPIOS
+  //     movimientos Y únicamente los de la categoría restringida (ambas
+  //     condiciones a la vez), así que es una sola consulta con dos
+  //     igualdades (usuario + seccion). Al ser igualdades (no rangos), no
+  //     hace falta crear un índice compuesto, sin importar el rango de
+  //     fechas.
   //   - {tipo:'propio', email}: colaborador y sin_permisos, solo sus
   //     propios movimientos.
   window.firestoreLeerMovimientos = async (alcance) => {
@@ -83,21 +84,15 @@
       return out;
     }
     if(alcance.tipo === 'ayudante'){
-      const qPropios = query(
+      const snap = await getDocs(query(
         collection(db, "movimientos"),
         where("usuario", "==", alcance.email),
-        orderBy("fechaReal")
-      );
-      const qCategoria = query(
-        collection(db, "movimientos"),
         where("seccion", "==", alcance.categoria),
         orderBy("fechaReal")
-      );
-      const [snapPropios, snapCategoria] = await Promise.all([getDocs(qPropios), getDocs(qCategoria)]);
-      const porId = new Map();
-      snapPropios.forEach(d => porId.set(d.id, { id: d.id, ...d.data() }));
-      snapCategoria.forEach(d => porId.set(d.id, { id: d.id, ...d.data() }));
-      return Array.from(porId.values()).sort((a, b) => new Date(a.fechaReal) - new Date(b.fechaReal));
+      ));
+      const out = [];
+      snap.forEach(d => out.push({ id: d.id, ...d.data() }));
+      return out;
     }
     const snap = await getDocs(query(
       collection(db, "movimientos"),
@@ -770,10 +765,9 @@ const CONFIG = {
   //   (como admin), pero solo puede agregar (como colaborador).
   // 'colaborador': solo ve sus propios movimientos (cualquier categoría),
   //   y solo puede agregar (a su propio nombre, cualquier categoría).
-  // 'ayudante': solo puede agregar (a su propio nombre, cualquier
-  //   categoría). Ve sus propios movimientos (cualquier categoría) MÁS
-  //   los movimientos de CUALQUIER usuario en la categoría definida en
-  //   ROLES_VISTA_RESTRINGIDA, sin límite de fecha.
+  // 'ayudante': solo puede agregar y ver movimientos PROPIOS y únicamente
+  //   en la categoría definida en ROLES_VISTA_RESTRINGIDA (no ve ni carga
+  //   en otras categorías, ni ve movimientos de otros usuarios).
   // 'sin_permisos': solo puede ver (sus propios movimientos), ningún botón de acción.
   ROLES: {
     'nicolaspicconi@gmail.com': 'admin',
@@ -782,12 +776,10 @@ const CONFIG = {
     'santinopicconi@gmail.com': 'ayudante'
   },
 
-  // Categoría de "vista extendida" del rol "ayudante": además de sus
-  // propios movimientos, puede LEER (de cualquier usuario, sin límite de
-  // fecha) los movimientos de esta categoría. Tiene que coincidir con la
-  // condición esAyudante() && seccion == 'Granja' de Reglas_Capital.txt.
-  // Ya no limita en qué categoría puede CARGAR movimientos nuevos: eso es
-  // libre (como para supervisor/colaborador), según la regla de "create".
+  // Única categoría en la que el rol "ayudante" puede CARGAR y LEER
+  // movimientos (siempre los suyos propios). Tiene que coincidir con la
+  // condición esAyudante() && ... && seccion == 'Granja' de
+  // Reglas_Capital.txt (tanto en "read" como en "create").
   ROLES_VISTA_RESTRINGIDA: {
     'ayudante': { categoria: 'Granja' }
   },
@@ -892,10 +884,11 @@ function puedeVerPlataActual(){
   return rolActual === 'admin' || rolActual === 'supervisor';
 }
 
-// 'colaborador' tampoco ve la pestaña "Resumen" (solo carga movimientos y
-// ve los propios); el resto de los roles con acceso a la app sí la ve.
+// 'colaborador' y 'ayudante' no ven la pestaña "Resumen" (solo cargan
+// movimientos y ven los propios); el resto de los roles con acceso a la
+// app sí la ve.
 function puedeVerResumen(){
-  return rolActual !== 'colaborador';
+  return rolActual !== 'colaborador' && rolActual !== 'ayudante';
 }
 
 // Oculta/muestra las pestañas "Plata Actual" y "Resumen" según el rol, y
@@ -972,6 +965,7 @@ function handleCredentialResponse(response){
   lockError.textContent = '';
   lockScreen.classList.add('hidden');
   aplicarVisibilidadTabsPorRol();
+  actualizarSeccionesPermitidas();
 
   // Autentica también contra Firebase con el mismo token de Google, para
   // que las reglas de Firestore (request.auth) dejen pasar a este usuario.
@@ -1033,6 +1027,7 @@ window.addEventListener('load', function(){
 
     lockScreen.classList.add('hidden');
     aplicarVisibilidadTabsPorRol();
+    actualizarSeccionesPermitidas();
     if(window.firebaseSignInConCredencialGoogle){
       window.firebaseSignInConCredencialGoogle(idToken).then(() => {
         cargarDatos();
@@ -1806,6 +1801,17 @@ nmSeccionGrid.querySelectorAll('.nm-seccion-btn').forEach(btn => {
   });
 });
 
+// Para roles con ROLES_VISTA_RESTRINGIDA (ej: "ayudante"), oculta del
+// formulario cualquier botón de categoría que no sea la permitida: la
+// regla de Firestore ("create") rechaza igual cualquier otra, así que no
+// tiene sentido dejarla elegible. El resto de los roles ve todas.
+function actualizarSeccionesPermitidas(){
+  const restr = restriccionRolActual();
+  nmSeccionGrid.querySelectorAll('.nm-seccion-btn').forEach(btn => {
+    btn.classList.toggle('hidden', !!restr && btn.dataset.seccion !== restr.categoria);
+  });
+}
+
 // Convierte un valor numérico tal como viene de la planilla (ej: -52.5)
 // al formato que usan los inputs (ej: "-52,5", con separador de miles si aplica)
 function numeroAInputStr(num){
@@ -1821,9 +1827,9 @@ function abrirNuevoModal(mov, modoEditar){
   nmEditId.value = (precargar && modoEditar) ? (mov['ID'] || '') : '';
   nuevoTitulo.textContent = modoEditar ? 'Editar movimiento' : (precargar ? 'Copiar movimiento' : 'Nuevo movimiento');
 
-  // Para 'ayudante', preselecciona su categoría de vista extendida (ej:
-  // 'Granja') solo como comodidad; puede cambiarla, ya que ahora puede
-  // cargar movimientos nuevos en cualquier categoría.
+  // Para 'ayudante', preselecciona (y deja como única opción visible,
+  // ver actualizarSeccionesPermitidas) su categoría restringida (ej:
+  // 'Granja'), ya que es la única en la que puede cargar movimientos.
   const restrCategorias = restriccionRolActual();
   seleccionarSeccion(precargar ? (mov['Categoría'] || '') : (restrCategorias ? restrCategorias.categoria : ''));
   nmConcepto.value = precargar ? (mov['Concepto'] || '') : '';
