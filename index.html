@@ -74,8 +74,14 @@
   //     igualdades (usuario + seccion). Al ser igualdades (no rangos), no
   //     hace falta crear un índice compuesto, sin importar el rango de
   //     fechas.
-  //   - {tipo:'propio', email}: colaborador y sin_permisos, solo sus
-  //     propios movimientos.
+  //   - {tipo:'colaborador', email}: colaborador. Ve sus propios
+  //     movimientos (cualquier categoría) MÁS los de cualquier usuario
+  //     en categoría "Granja". Son dos consultas separadas (una por
+  //     usuario, otra por sección) porque la regla de Firestore exige
+  //     que cada consulta sea, por sí sola, comprobadamente segura; se
+  //     unen y desduplican del lado del cliente.
+  //   - {tipo:'propio', email}: sin_permisos, solo sus propios
+  //     movimientos.
   window.firestoreLeerMovimientos = async (alcance) => {
     if(alcance.tipo === 'todo'){
       const snap = await getDocs(query(collection(db, "movimientos"), orderBy("fechaReal")));
@@ -92,6 +98,30 @@
       ));
       const out = [];
       snap.forEach(d => out.push({ id: d.id, ...d.data() }));
+      return out;
+    }
+    if(alcance.tipo === 'colaborador'){
+      const [snapPropio, snapGranja] = await Promise.all([
+        getDocs(query(
+          collection(db, "movimientos"),
+          where("usuario", "==", alcance.email),
+          orderBy("fechaReal")
+        )),
+        getDocs(query(
+          collection(db, "movimientos"),
+          where("seccion", "==", "Granja"),
+          orderBy("fechaReal")
+        ))
+      ]);
+      const vistos = new Set();
+      const out = [];
+      [snapPropio, snapGranja].forEach(snap => snap.forEach(d => {
+        if(!vistos.has(d.id)){
+          vistos.add(d.id);
+          out.push({ id: d.id, ...d.data() });
+        }
+      }));
+      out.sort((a, b) => new Date(a.fechaReal) - new Date(b.fechaReal));
       return out;
     }
     const snap = await getDocs(query(
@@ -763,8 +793,9 @@ const CONFIG = {
   //   movimientos de todos y la pestaña "Plata Actual".
   // 'supervisor': ve los movimientos de todos y la pestaña "Plata Actual"
   //   (como admin), pero solo puede agregar (como colaborador).
-  // 'colaborador': solo ve sus propios movimientos (cualquier categoría),
-  //   y solo puede agregar (a su propio nombre, cualquier categoría).
+  // 'colaborador': ve sus propios movimientos (cualquier categoría) MÁS
+  //   los movimientos de CUALQUIER usuario en categoría "Granja", y
+  //   solo puede agregar (a su propio nombre, cualquier categoría).
   // 'ayudante': solo puede agregar y ver movimientos PROPIOS y únicamente
   //   en la categoría definida en ROLES_VISTA_RESTRINGIDA (no ve ni carga
   //   en otras categorías, ni ve movimientos de otros usuarios).
@@ -1087,6 +1118,7 @@ function alcanceActual(){
   const restr = CONFIG.ROLES_VISTA_RESTRINGIDA[rolActual];
   if(restr) return { tipo: 'ayudante', categoria: restr.categoria, email: emailActual };
   if(rolActual === 'admin' || rolActual === 'supervisor') return { tipo: 'todo' };
+  if(rolActual === 'colaborador') return { tipo: 'colaborador', email: emailActual };
   return { tipo: 'propio', email: emailActual };
 }
 
