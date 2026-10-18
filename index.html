@@ -22,7 +22,7 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
   import { getAuth, GoogleAuthProvider, signInWithCredential, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js";
   import {
-    getFirestore, collection, getDocs, doc, setDoc, deleteDoc, query, where, orderBy, Timestamp
+    getFirestore, collection, getDocs, getDoc, doc, setDoc, deleteDoc, query, where, orderBy, Timestamp
   } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
 
   const firebaseConfig = {
@@ -144,6 +144,15 @@
   window.firestoreEliminarMovimiento = async (id) => {
     await deleteDoc(doc(db, "movimientos", id));
   };
+
+  // Listas de conceptos por categoría (documento único config/conceptos).
+  window.firestoreLeerConceptos = async () => {
+    const snap = await getDoc(doc(db, "config", "conceptos"));
+    return snap.exists() ? (snap.data().listas || {}) : null;
+  };
+  window.firestoreGuardarConceptos = async (listas) => {
+    await setDoc(doc(db, "config", "conceptos"), { listas });
+  };
 </script>
 
 <style>
@@ -205,12 +214,13 @@
     letter-spacing:0.2px;
   }
   .icon-btn{
-    background:#fff; border:1px solid var(--azul-borde); padding:11px; cursor:pointer;
+    background:#fff; border:1px solid var(--azul-borde); padding:10px; cursor:pointer;
     color:var(--azul); display:flex; align-items:center; justify-content:center;
     border-radius:12px; box-shadow:0 1px 2px rgba(22,48,92,0.06);
   }
   .icon-btn.logout{ color:var(--rojo); }
   .icon-btn.hidden{ display:none; }
+  .header-btns{ display:flex; gap:7px; flex-shrink:0; }
   .icon-btn:active{ background:var(--azul-suave); }
   .icon-btn svg{ width:19px; height:19px; }
   .icon-btn.spinning svg{ animation: spin 0.8s linear infinite; }
@@ -245,6 +255,16 @@
   }
   .search-wrap input:focus{ border-color:var(--azul); }
   .search-wrap input::placeholder{ color:#a7b2c6; }
+  .chips-rapidos{ display:flex; flex-wrap:wrap; gap:7px; margin-top:9px; }
+  .chip-rapido{
+    padding:7px 12px; border-radius:11px; border:1.5px solid var(--azul-borde);
+    background:#f2f4f8; color:#3a4560; font-size:14px; font-weight:700; cursor:pointer;
+  }
+  .chip-rapido.hidden{ display:none; }
+  .chip-rapido.active{
+    background:var(--azul); border-color:var(--azul); color:#fff;
+    box-shadow:0 2px 6px rgba(42,92,201,0.35);
+  }
 
   /* Controles de la pestaña Resumen */
   .resumen-controls{ padding:14px 20px 6px; flex-shrink:0; }
@@ -276,6 +296,11 @@
   }
   .resumen-fecha-campo input:focus, .resumen-seccion-campo select:focus{ border-color:var(--azul); }
 
+  /* Desplegables de Resumen (mismo estilo que el de Concepto del formulario) */
+  .rs-select-oculto{ display:none !important; }
+  .rs-trigger{ font-size:15px; padding:10px 12px; border-radius:11px; }
+  #rs-panel{ max-height:45vh; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+
   /* Content */
   main{ flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:8px 20px 24px; }
   /* En la pestaña Movimientos, main deja de scrollear: la tabla scrollea sola
@@ -287,6 +312,13 @@
 
   .state-msg{ padding:40px 20px; text-align:center; color:var(--texto-tenue); font-size:14px; }
   .state-msg.error{ color:var(--rojo); }
+  .sk{
+    display:block; height:14px; border-radius:7px; margin:0 auto;
+    background:linear-gradient(90deg,#e6eddf 25%,#f4f8ef 45%,#e6eddf 65%);
+    background-size:300% 100%; animation:shimmer 1.3s ease-in-out infinite;
+  }
+  @keyframes shimmer{ from{ background-position:100% 0; } to{ background-position:0 0; } }
+  .loading-msg{ padding:14px 20px 0; text-align:center; color:var(--texto-tenue); font-size:13.5px; }
 
   /* Tabla Stock Actual */
   .stock-table-wrap{
@@ -556,13 +588,73 @@
   }
   .nuevo-body input[readonly]:focus{ border-color:var(--azul-borde); }
 
+  /* Desplegable propio (Concepto) */
+  .dd{ width:100%; }
+  .dd.hidden{ display:none; }
+  .dd-trigger{
+    width:100%; display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:11px 12px; border-radius:10px; border:1px solid var(--azul-borde);
+    background:#fff; font-size:17px; color:#1a1f2b; cursor:pointer; text-align:left;
+  }
+  .dd-trigger.abierto{ border-color:var(--azul); }
+  .dd-label{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .dd-label.placeholder{ color:#9aa3b8; }
+  .dd-trigger svg{
+    width:18px; height:18px; color:var(--azul); flex-shrink:0; transition:transform .15s;
+  }
+  .dd-trigger.abierto svg{ transform:rotate(180deg); }
+  .dd-panel{
+    margin-top:6px; border:1px solid var(--azul-borde); border-radius:12px; background:#fff;
+    box-shadow:0 6px 16px rgba(22,48,92,0.12); padding:10px;
+    display:flex; flex-wrap:wrap; gap:8px;
+  }
+  .dd-panel.hidden{ display:none; }
+  .dd-op{
+    padding:11px 14px; border-radius:11px; border:1.5px solid var(--azul-borde);
+    background:#f2f4f8; color:#3a4560; font-size:15.5px; font-weight:700;
+    cursor:pointer; text-align:center;
+  }
+  .dd-op:active{ opacity:0.85; }
+  .dd-op.selected{
+    background:var(--azul); border-color:var(--azul); color:#fff;
+    box-shadow:0 2px 6px rgba(42,92,201,0.35);
+  }
+  #nm-concepto-dd + #nm-concepto{ margin-top:8px; }
+
+  /* Modal Config (listas de Concepto) */
+  #config-modal{
+    position:fixed; inset:0; z-index:160;
+    background:rgba(17,22,36,0.55);
+    display:flex; align-items:flex-end; justify-content:center;
+  }
+  #config-modal.hidden{ display:none; }
+  .cfg-ayuda{ font-size:14px; color:var(--texto-tenue); margin:0 0 4px; line-height:1.4; }
+  .cfg-lista{ display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }
+  .cfg-vacia{ font-size:14px; color:var(--texto-tenue); padding:6px 2px; }
+  .cfg-item{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:10px 12px; border:1px solid var(--azul-borde); border-radius:10px;
+    background:var(--azul-suave); font-size:16px; color:#1a1f2b;
+  }
+  .cfg-item button{
+    background:#fff; border:1px solid var(--azul-borde); color:var(--rojo);
+    width:30px; height:30px; border-radius:50%; font-size:18px; line-height:1;
+    cursor:pointer; flex-shrink:0;
+  }
+  .cfg-agregar{ display:flex; gap:8px; }
+  .cfg-agregar input{ flex:1; min-width:0; }
+  .cfg-agregar button{
+    padding:0 16px; border-radius:10px; border:none; background:var(--azul); color:#fff;
+    font-size:15px; font-weight:700; cursor:pointer;
+  }
+
   /* Botones de Categoría */
   .nm-seccion-grid{
     display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;
   }
   .nm-seccion-btn{
     padding:12px 8px; border-radius:11px; border:1.5px solid var(--azul-borde);
-    background:#fff; color:#3a4560; font-size:15.5px; font-weight:700;
+    background:#f2f4f8; color:#3a4560; font-size:15.5px; font-weight:700;
     cursor:pointer; text-align:center;
   }
   .nm-seccion-btn.selected{
@@ -650,7 +742,7 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
     </div>
     <h3>Eliminar movimiento</h3>
-    <p>Esta acción borra el movimiento de forma permanente. No se puede deshacer.</p>
+    <p>Esta acción borra el movimiento de forma permanente, tanto de la app como de la base de datos. No se puede deshacer.</p>
     <div class="confirm-actions">
       <button class="btn-cancelar" id="confirm-eliminar-cancelar">Cancelar</button>
       <button class="btn-confirmar" id="confirm-eliminar-aceptar">Eliminar</button>
@@ -691,10 +783,17 @@
       <input type="hidden" id="nm-seccion">
 
       <label>Concepto</label>
-      <input type="text" id="nm-concepto" placeholder="Ej: 1B, Juan, Gustavo, Comedor">
+      <div class="dd hidden" id="nm-concepto-dd">
+        <button type="button" class="dd-trigger" id="dd-trigger">
+          <span class="dd-label placeholder" id="dd-label">Elegí un concepto...</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="dd-panel hidden" id="dd-panel"></div>
+      </div>
+      <input type="text" id="nm-concepto" maxlength="30" placeholder="Ej: 1B, Juan, Gustavo, Comedor">
 
       <label>Notas</label>
-      <input type="text" id="nm-notas" placeholder="Opcional">
+      <input type="text" id="nm-notas" maxlength="30" placeholder="Opcional">
 
       <div class="nuevo-productos-title">Importe</div>
       <div class="nuevo-productos-grid principales" id="nm-productos-principales"></div>
@@ -713,6 +812,31 @@
   </div>
 </div>
 
+<div id="config-modal" class="hidden">
+  <div class="nuevo-box">
+    <div class="nuevo-header">
+      <h3>Config: conceptos</h3>
+      <button class="nuevo-close" id="cfg-cerrar" aria-label="Cerrar">×</button>
+    </div>
+    <div class="nuevo-body">
+      <p class="cfg-ayuda">Armá la lista de conceptos de cada categoría. Si una categoría no tiene lista, el campo Concepto queda de texto libre.</p>
+      <label>Categoría</label>
+      <div class="nm-seccion-grid" id="cfg-seccion-grid"></div>
+      <label id="cfg-titulo-lista">Conceptos</label>
+      <div class="cfg-lista" id="cfg-lista"></div>
+      <div class="cfg-agregar">
+        <input type="text" id="cfg-nuevo" maxlength="30" placeholder="Nuevo concepto">
+        <button type="button" id="cfg-agregar-btn">Agregar</button>
+      </div>
+    </div>
+    <div class="nuevo-error" id="cfg-error"></div>
+    <div class="nuevo-footer">
+      <button class="btn-cancelar" id="cfg-cancelar-btn">Cancelar</button>
+      <button class="btn-guardar" id="cfg-guardar">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <div id="app">
 
   <header>
@@ -721,12 +845,15 @@
         <h1 id="header-title">Capital</h1>
         <div class="sub">Distribuidora Don Picconi</div>
       </div>
-      <div style="display:flex; gap:22px;">
+      <div class="header-btns">
         <button class="icon-btn hidden" id="btn-exportar" aria-label="Descargar Excel">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         </button>
         <button class="icon-btn" id="btn-refresh" aria-label="Actualizar">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        </button>
+        <button class="icon-btn hidden" id="btn-config" aria-label="Config">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         </button>
         <button class="icon-btn logout" id="btn-logout" aria-label="Cerrar sesión">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
@@ -759,27 +886,47 @@
     </div>
     <div class="resumen-filtros-fila">
       <div class="resumen-seccion-campo">
-        <label for="resumen-seccion">Categoría</label>
-        <select id="resumen-seccion">
+        <label>Categoría</label>
+        <select id="resumen-seccion" class="rs-select-oculto">
           <option value="">Todas</option>
         </select>
+        <button type="button" class="dd-trigger rs-trigger" id="rs-trigger-seccion" data-campo="seccion">
+          <span class="dd-label">Todas</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
       </div>
       <div class="resumen-seccion-campo">
-        <label for="resumen-concepto">Concepto</label>
-        <select id="resumen-concepto">
+        <label>Concepto</label>
+        <select id="resumen-concepto" class="rs-select-oculto">
           <option value="">Todos</option>
         </select>
+        <button type="button" class="dd-trigger rs-trigger" id="rs-trigger-concepto" data-campo="concepto">
+          <span class="dd-label">Todos</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
       </div>
     </div>
+    <div class="dd-panel hidden" id="rs-panel"></div>
   </div>
 
 
-  <div class="search-wrap" id="search-wrap">
+  <div class="search-wrap" id="search-wrap" style="display:none;">
     <input type="text" id="search" placeholder="Buscar movimiento...">
+    <div class="chips-rapidos" id="chips-rapidos"></div>
   </div>
 
   <main id="main">
-    <div class="state-msg" id="loading">Cargando datos...</div>
+    <div id="loading">
+      <div class="stock-table-wrap">
+        <table class="stock plata-actual"><tbody>
+        <tr><td class="modo"><span class="sk" style="width:62%"></span></td><td class="plata"><span class="sk" style="width:60%"></span></td><td class="fecha"><span class="sk" style="width:70%"></span></td></tr>
+        <tr><td class="modo"><span class="sk" style="width:48%"></span></td><td class="plata"><span class="sk" style="width:60%"></span></td><td class="fecha"><span class="sk" style="width:70%"></span></td></tr>
+        <tr><td class="modo"><span class="sk" style="width:70%"></span></td><td class="plata"><span class="sk" style="width:60%"></span></td><td class="fecha"><span class="sk" style="width:70%"></span></td></tr>
+        <tr class="plata-total-row"><td class="modo"><span class="sk" style="width:40%"></span></td><td class="plata"><span class="sk" style="width:60%"></span></td><td class="fecha"><span class="sk" style="width:70%"></span></td></tr>
+        </tbody></table>
+      </div>
+      <div class="loading-msg">Cargando datos...</div>
+    </div>
   </main>
 
 </div>
@@ -830,6 +977,7 @@ let currentTab = 'stock';
 
 const mainEl = document.getElementById('main');
 const searchEl = document.getElementById('search');
+let seccionRapida = '';   // filtro rápido por Categoría (botones bajo el buscador)
 const searchWrapEl = document.getElementById('search-wrap');
 const headerTitle = document.getElementById('header-title');
 const btnRefresh = document.getElementById('btn-refresh');
@@ -1023,9 +1171,11 @@ function iniciarSesionFirebase(){
     lockScreen.classList.add('hidden');
     aplicarVisibilidadTabsPorRol();
     actualizarSeccionesPermitidas();
+    document.getElementById('btn-config').classList.toggle('hidden', !esAdmin());
     if(datosCargadosPara !== email){
       datosCargadosPara = email;
       cargarDatos();
+      cargarConceptosConfig();
     }
   });
 }
@@ -1244,6 +1394,7 @@ function actualizarOpcionesConcepto(){
   resumenConceptoEl.innerHTML = `<option value="">Todos</option>`
     + listaOrdenada.map(c => `<option value="${c}">${c}</option>`).join('');
   resumenConceptoEl.value = mantieneSeleccion ? seleccionPrevia : '';
+  rsSync();
 }
 
 function calcularResumen(){
@@ -1363,6 +1514,7 @@ function renderMovimientos(filtro){
 
   const filas = ordenados
     .filter(mov => {
+      if(seccionRapida && mov['Categoría'] !== seccionRapida) return false;
       if(!filtro) return true;
       const texto = `${mov['Concepto']||''} ${mov['Categoría']||''} ${mov['Notas']||''} ${mov['Usuario']||''}`.toLowerCase();
       return texto.includes(filtro.toLowerCase());
@@ -1485,16 +1637,21 @@ function render(){
   posicionarFabs();
 }
 
-// Alinea los botones flotantes (+/copiar/editar/eliminar) contra el borde
-// derecho real de la tabla de Movimientos, tanto en celular como en PC
-// (donde la tabla se estira más ancha que el resto de la app).
+// Alinea los botones flotantes (+/copiar/editar/eliminar) apenas adentro
+// del borde real de la tabla de Movimientos (tanto en celular como en PC,
+// donde la tabla se estira más ancha que el resto de la app), dejando
+// margen suficiente para no superponerse con las barras de scroll
+// vertical y horizontal.
 function posicionarFabs(){
   const wrap = document.querySelector('.mov-table-wrap');
   if(!wrap) return;
   const rect = wrap.getBoundingClientRect();
-  const right = Math.max(16, window.innerWidth - rect.right + 22);
+  const right = Math.max(16, window.innerWidth - rect.right + 26);
+  const bottomBase = Math.max(28, window.innerHeight - rect.bottom + 26);
   fabNuevo.style.right = right + 'px';
+  fabNuevo.style.bottom = bottomBase + 'px';
   fabAcciones.style.right = right + 'px';
+  fabAcciones.style.bottom = (bottomBase + 68) + 'px';
 }
 window.addEventListener('resize', posicionarFabs);
 
@@ -1552,6 +1709,7 @@ function filasParaExportar(){
   const filtro = searchEl.value.trim().toLowerCase();
   return movimientos
     .filter(mov => {
+      if(seccionRapida && mov['Categoría'] !== seccionRapida) return false;
       if(!filtro) return true;
       const texto = `${mov['Concepto']||''} ${mov['Categoría']||''} ${mov['Notas']||''} ${mov['Usuario']||''}`.toLowerCase();
       return texto.includes(filtro);
@@ -1632,6 +1790,74 @@ btnExportar.addEventListener('click', exportarMovimientosExcel);
 /* ============== Nuevo movimiento ============== */
 const SECCIONES = ['Frigorífico', 'Granja', 'Repartos', 'Personales', 'Empresa', 'Sueldos', 'Banco', 'Otros'];
 resumenSeccionEl.innerHTML += SECCIONES.map(s => `<option value="${s}">${s}</option>`).join('');
+
+// Botones fijos bajo el buscador: filtran Movimientos por Categoría con un toque.
+// Tocar el botón activo lo desactiva. Se combinan con lo escrito en el buscador.
+const chipsRapidosEl = document.getElementById('chips-rapidos');
+chipsRapidosEl.innerHTML = SECCIONES.map(sec =>
+  `<button type="button" class="chip-rapido" data-sec="${sec}">${sec}</button>`).join('');
+chipsRapidosEl.addEventListener('click', (e) => {
+  const btn = e.target.closest('.chip-rapido');
+  if(!btn) return;
+  seccionRapida = (seccionRapida === btn.dataset.sec) ? '' : btn.dataset.sec;
+  chipsRapidosEl.querySelectorAll('.chip-rapido').forEach(b =>
+    b.classList.toggle('active', b.dataset.sec === seccionRapida));
+  scrollState.movimientos = { top: 0, left: 0 };
+  render();   // al renderizar, Movimientos queda abajo del todo (último cargado)
+});
+
+/* ============== Desplegables de Resumen (botones) ==============
+   Los <select> originales siguen existiendo (ocultos) y guardan el valor;
+   estos botones leen sus opciones y, al elegir, cambian el select y
+   disparan su evento 'change', así el resto de la lógica no cambia. */
+let rsAbierto = '';   // 'seccion' | 'concepto' | ''
+function rsSelectDe(campo){
+  return document.getElementById(campo === 'seccion' ? 'resumen-seccion' : 'resumen-concepto');
+}
+function rsRenderPanel(){
+  const panel = document.getElementById('rs-panel');
+  if(!panel) return;
+  document.querySelectorAll('.rs-trigger').forEach(t =>
+    t.classList.toggle('abierto', t.dataset.campo === rsAbierto));
+  if(!rsAbierto){ panel.classList.add('hidden'); return; }
+  const sel = rsSelectDe(rsAbierto);
+  panel.innerHTML = Array.from(sel.options).filter(o => !o.classList.contains('hidden')).map(o =>
+    `<div class="dd-op${o.value === sel.value ? ' selected' : ''}" data-v="${escHTML_(o.value)}">${escHTML_(o.textContent)}</div>`
+  ).join('');
+  panel.classList.remove('hidden');
+}
+function rsSync(){
+  ['seccion', 'concepto'].forEach(campo => {
+    const sel = rsSelectDe(campo);
+    const trig = document.getElementById('rs-trigger-' + campo);
+    if(!sel || !trig) return;
+    const opt = sel.options[sel.selectedIndex];
+    trig.querySelector('.dd-label').textContent = opt ? opt.textContent : '';
+  });
+  rsRenderPanel();
+}
+document.querySelectorAll('.rs-trigger').forEach(t => {
+  t.addEventListener('click', () => {
+    rsAbierto = (rsAbierto === t.dataset.campo) ? '' : t.dataset.campo;
+    rsRenderPanel();
+  });
+});
+document.getElementById('rs-panel').addEventListener('click', (e) => {
+  const op = e.target.closest('.dd-op');
+  if(!op || !rsAbierto) return;
+  const sel = rsSelectDe(rsAbierto);
+  sel.value = op.dataset.v;
+  sel.dispatchEvent(new Event('change'));
+  rsAbierto = '';
+  rsSync();
+});
+document.addEventListener('click', (e) => {
+  if(rsAbierto && !e.target.closest('.rs-trigger, #rs-panel')){
+    rsAbierto = '';
+    rsRenderPanel();
+  }
+});
+rsSync();
 const fabNuevo = document.getElementById('fab-nuevo');
 const fabAcciones = document.getElementById('fab-acciones');
 const fabEditar = document.getElementById('fab-editar');
@@ -1801,6 +2027,103 @@ nmSeccionGrid.innerHTML = SECCIONES.map(s => `
   <button type="button" class="nm-seccion-btn" data-seccion="${s}">${s}</button>
 `).join('');
 
+/* ============== Conceptos condicionales por categoría ============== */
+const CONCEPTOS_LS_KEY = 'capitaldp_conceptos_por_seccion';
+let conceptosPorSeccion = {};
+try{
+  conceptosPorSeccion = JSON.parse(localStorage.getItem(CONCEPTOS_LS_KEY) || '{}') || {};
+}catch(e){ conceptosPorSeccion = {}; }
+
+function escHTML_(t){
+  return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function cargarConceptosConfig(){
+  try{
+    const listas = await window.firestoreLeerConceptos();
+    if(listas){
+      conceptosPorSeccion = listas;
+      try{ localStorage.setItem(CONCEPTOS_LS_KEY, JSON.stringify(listas)); }catch(e){}
+    }
+  }catch(err){
+    console.warn('No se pudieron leer las listas de conceptos (se usa la copia local):', err);
+  }
+}
+
+// Muestra el desplegable si la categoría elegida tiene lista; si no, el campo de texto libre.
+// nmConcepto.value siempre es el valor final que se guarda.
+const ddEl = document.getElementById('nm-concepto-dd');
+const ddTrigger = document.getElementById('dd-trigger');
+const ddLabel = document.getElementById('dd-label');
+const ddPanel = document.getElementById('dd-panel');
+
+function ddCerrar(){
+  ddPanel.classList.add('hidden');
+  ddTrigger.classList.remove('abierto');
+}
+function ddSetLabel(texto){
+  ddLabel.textContent = texto || 'Elegí un concepto...';
+  ddLabel.classList.toggle('placeholder', !texto);
+}
+function ddRenderOpciones(opciones, actual){
+  ddPanel.innerHTML = opciones.map(c =>
+    `<div class="dd-op${c === actual ? ' selected' : ''}" data-v="${escHTML_(c)}">${escHTML_(c)}</div>`
+  ).join('') + `<div class="dd-op otro" data-otro="1">+ Otro...</div>`;
+}
+
+function refrescarConceptoUI(){
+  ddCerrar();
+  const lista = conceptosPorSeccion[nmSeccion.value] || [];
+  if(!lista.length){
+    ddEl.classList.add('hidden');
+    nmConcepto.style.display = '';
+    return;
+  }
+  const actual = nmConcepto.value.trim();
+  const opciones = lista.slice();
+  if(actual && !opciones.includes(actual)) opciones.push(actual); // concepto viejo que ya no está en la lista
+  ddRenderOpciones(opciones, actual);
+  ddSetLabel(actual);
+  ddEl.classList.remove('hidden');
+  nmConcepto.style.display = 'none';
+}
+
+ddTrigger.addEventListener('click', () => {
+  const abrir = ddPanel.classList.contains('hidden');
+  ddPanel.classList.toggle('hidden', !abrir);
+  ddTrigger.classList.toggle('abierto', abrir);
+  if(abrir){
+    const sel = ddPanel.querySelector('.selected');
+    if(sel) sel.scrollIntoView({ block:'nearest' });
+  }
+});
+
+ddPanel.addEventListener('click', (e) => {
+  const op = e.target.closest('.dd-op');
+  if(!op) return;
+  if(op.dataset.otro){
+    nmConcepto.value = '';
+    ddSetLabel('Otro...');
+    ddLabel.classList.remove('placeholder');
+    ddPanel.querySelectorAll('.dd-op').forEach(o => o.classList.remove('selected'));
+    nmConcepto.style.display = '';
+    ddCerrar();
+    nmConcepto.focus();
+  }else{
+    const v = op.dataset.v;
+    nmConcepto.value = v;
+    nmConcepto.style.display = 'none';
+    ddPanel.querySelectorAll('.dd-op').forEach(o => o.classList.toggle('selected', o === op));
+    ddSetLabel(v);
+    ddCerrar();
+  }
+});
+
+// tocar fuera del desplegable lo cierra
+document.addEventListener('click', (e) => {
+  if(!ddEl.contains(e.target)) ddCerrar();
+});
+
 function seleccionarSeccion(valor){
   nmSeccion.value = valor;
   nmSeccionGrid.querySelectorAll('.nm-seccion-btn').forEach(btn => {
@@ -1812,6 +2135,8 @@ nmSeccionGrid.querySelectorAll('.nm-seccion-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     // tocar de nuevo el mismo botón lo deselecciona
     seleccionarSeccion(nmSeccion.value === btn.dataset.seccion ? '' : btn.dataset.seccion);
+    nmConcepto.value = '';   // el concepto depende de la categoría: se resetea al cambiarla
+    refrescarConceptoUI();
   });
 });
 
@@ -1823,6 +2148,10 @@ function actualizarSeccionesPermitidas(){
   const restr = restriccionRolActual();
   nmSeccionGrid.querySelectorAll('.nm-seccion-btn').forEach(btn => {
     btn.classList.toggle('hidden', !!restr && btn.dataset.seccion !== restr.categoria);
+  });
+  // Los botones rápidos bajo el buscador también respetan la restricción del rol.
+  document.querySelectorAll('.chip-rapido').forEach(btn => {
+    btn.classList.toggle('hidden', !!restr && btn.dataset.sec !== restr.categoria);
   });
 }
 
@@ -1847,6 +2176,7 @@ function abrirNuevoModal(mov, modoEditar){
   const restrCategorias = restriccionRolActual();
   seleccionarSeccion(precargar ? (mov['Categoría'] || '') : (restrCategorias ? restrCategorias.categoria : ''));
   nmConcepto.value = precargar ? (mov['Concepto'] || '') : '';
+  refrescarConceptoUI();
   nmNotas.value = precargar ? (mov['Notas'] || '') : '';
   nmUsuario.value = emailActual;
   nmFecha.value = precargar && mov[CONFIG.CAMPO_FECHA]
@@ -1902,6 +2232,98 @@ function construirMovimientoLocal(payload, idFinal, movOriginal){
   CONFIG.PRODUCTOS.forEach(p => { mov[p] = productosNum[p]; });
   return mov;
 }
+
+/* ============== Modal Config: listas de conceptos ============== */
+const configModal = document.getElementById('config-modal');
+const cfgSeccionGrid = document.getElementById('cfg-seccion-grid');
+const cfgListaEl = document.getElementById('cfg-lista');
+const cfgNuevoEl = document.getElementById('cfg-nuevo');
+const cfgErrorEl = document.getElementById('cfg-error');
+const cfgGuardarBtn = document.getElementById('cfg-guardar');
+let cfgBorrador = {};
+let cfgSeccionActual = SECCIONES[0];
+
+cfgSeccionGrid.innerHTML = SECCIONES.map(s =>
+  `<button type="button" class="nm-seccion-btn" data-cfg-seccion="${s}">${s}</button>`).join('');
+
+function cfgRender(){
+  cfgSeccionGrid.querySelectorAll('.nm-seccion-btn').forEach(b => {
+    b.classList.toggle('selected', b.dataset.cfgSeccion === cfgSeccionActual);
+  });
+  document.getElementById('cfg-titulo-lista').textContent = 'Conceptos de ' + cfgSeccionActual;
+  const lista = cfgBorrador[cfgSeccionActual] || [];
+  cfgListaEl.innerHTML = lista.length
+    ? lista.map((c, i) => `<div class="cfg-item"><span>${escHTML_(c)}</span><button type="button" data-i="${i}" aria-label="Quitar">×</button></div>`).join('')
+    : `<div class="cfg-vacia">Sin lista: el concepto se escribe a mano.</div>`;
+}
+
+function cfgAgregarPendiente(){
+  const v = cfgNuevoEl.value.trim();
+  if(!v) return;
+  const lista = cfgBorrador[cfgSeccionActual] = cfgBorrador[cfgSeccionActual] || [];
+  if(!lista.some(x => x.toLowerCase() === v.toLowerCase())) lista.push(v);
+  cfgNuevoEl.value = '';
+  cfgRender();
+}
+
+cfgSeccionGrid.querySelectorAll('.nm-seccion-btn').forEach(b => {
+  b.addEventListener('click', () => {
+    cfgAgregarPendiente();
+    cfgSeccionActual = b.dataset.cfgSeccion;
+    cfgRender();
+  });
+});
+cfgListaEl.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-i]');
+  if(!btn) return;
+  cfgBorrador[cfgSeccionActual].splice(Number(btn.dataset.i), 1);
+  cfgRender();
+});
+document.getElementById('cfg-agregar-btn').addEventListener('click', () => { cfgAgregarPendiente(); cfgNuevoEl.focus(); });
+cfgNuevoEl.addEventListener('keydown', (e) => {
+  if(e.key === 'Enter'){ e.preventDefault(); cfgAgregarPendiente(); }
+});
+
+function cerrarConfigModal(){ configModal.classList.add('hidden'); }
+document.getElementById('btn-config').addEventListener('click', () => {
+  if(!esAdmin()) return;
+  cfgBorrador = JSON.parse(JSON.stringify(conceptosPorSeccion || {}));
+  cfgSeccionActual = SECCIONES[0];
+  cfgNuevoEl.value = '';
+  cfgErrorEl.textContent = '';
+  cfgGuardarBtn.disabled = false;
+  cfgGuardarBtn.textContent = 'Guardar';
+  cfgRender();
+  configModal.classList.remove('hidden');
+});
+document.getElementById('cfg-cerrar').addEventListener('click', cerrarConfigModal);
+document.getElementById('cfg-cancelar-btn').addEventListener('click', cerrarConfigModal);
+
+cfgGuardarBtn.addEventListener('click', async () => {
+  cfgAgregarPendiente();
+  cfgErrorEl.textContent = '';
+  const limpias = {};
+  SECCIONES.forEach(s => {
+    if(cfgBorrador[s] && cfgBorrador[s].length) limpias[s] = cfgBorrador[s];
+  });
+  cfgGuardarBtn.disabled = true;
+  cfgGuardarBtn.textContent = 'Guardando...';
+  conceptosPorSeccion = limpias;
+  try{ localStorage.setItem(CONCEPTOS_LS_KEY, JSON.stringify(limpias)); }catch(e){}
+  try{
+    await window.firestoreGuardarConceptos(limpias);
+    cerrarConfigModal();
+  }catch(err){
+    const sinPermiso = err && err.code === 'permission-denied';
+    cfgErrorEl.textContent = sinPermiso
+      ? 'Se guardó solo en este dispositivo: Firestore no permite escribir en "config". Hay que agregar la regla.'
+      : 'Se guardó solo en este dispositivo: ' + (err && err.message ? err.message : err);
+  }finally{
+    cfgGuardarBtn.disabled = false;
+    cfgGuardarBtn.textContent = 'Guardar';
+  }
+});
+/* ================================================================ */
 
 fabNuevo.addEventListener('click', () => abrirNuevoModal());
 document.getElementById('nuevo-cerrar').addEventListener('click', cerrarNuevoModal);
