@@ -1,5 +1,5 @@
 /* Service Worker - Plata Don Picconi */
-const CACHE_NAME = 'plata-dp-v4';
+const CACHE_NAME = 'plata-dp-v5';
 const APP_SHELL = [
   './',
   './index.html',
