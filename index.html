@@ -366,6 +366,17 @@
   table.plata-actual tr.plata-total-row td.plata{ font-size:16.5px; color:var(--azul-osc); }
   table.plata-actual tr.plata-total-row td.plata.neg{ color:var(--rojo); }
 
+  /* Botón atajo "Nuevo movimiento" al final de Plata Actual */
+  .btn-nuevo-atajo{
+    width:100%; margin-top:16px; padding:15px;
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    background:var(--azul); color:#fff; border:none; border-radius:14px;
+    font-size:16px; font-weight:800; cursor:pointer;
+    box-shadow:0 4px 12px rgba(42,92,201,0.35);
+  }
+  .btn-nuevo-atajo svg{ width:20px; height:20px; }
+  .btn-nuevo-atajo:active{ opacity:0.88; transform:scale(0.98); }
+
   /* Tabla de Resumen: misma estructura que Stock Actual pero con fuente más
      chica, para que entren los números de Entradas/Salidas/Total sin cortarse */
   table.resumen-table td{ padding:7px 6px; }
@@ -1341,7 +1352,15 @@ function renderStock(){
         </thead>
         <tbody>${filas}${filaTotal}</tbody>
       </table>
-    </div>`;
+    </div>
+    ${puedeAgregar() ? `
+    <button type="button" class="btn-nuevo-atajo" id="btn-nuevo-atajo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Nuevo movimiento
+    </button>` : ''}`;
+
+  const btnAtajo = document.getElementById('btn-nuevo-atajo');
+  if(btnAtajo) btnAtajo.addEventListener('click', () => abrirNuevoModal());
 }
 
 // Lunes a domingo. getDay(): 0=domingo..6=sábado -> lo convertimos para que
