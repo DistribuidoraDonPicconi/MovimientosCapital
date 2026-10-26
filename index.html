@@ -2148,7 +2148,10 @@ function limpiarCantidadParaEnvio(valorFormateado){
 
 /* ============== Selector de importes: botones + montos rápidos ============== */
 // Montos rápidos (se pueden cambiar a gusto)
-const PP_CHIPS = [100, 500, 1000, 2000, 10000, 20000];
+const PP_CHIPS = [1000, 5000, 10000, 20000, 50000, 100000];
+// Al abrir la ventana: producto elegido y modo (1 = suma, -1 = resta)
+const PP_PRODUCTO_DEFECTO = 'Efectivo';
+const PP_MODO_DEFECTO = -1;
 const ppModal = document.getElementById('prod-modal');
 const ppGrid = document.getElementById('pp-grid');
 const ppNombre = document.getElementById('pp-nombre');
@@ -2161,7 +2164,7 @@ const ppTotal = document.getElementById('pp-total');
 const ppAbrir = document.getElementById('pp-abrir');
 const ppResumen = document.getElementById('pp-resumen');
 let ppSel = null;
-let ppModo = 1;
+let ppModo = PP_MODO_DEFECTO;
 
 // concepto de plata (Efectivo/Cheque/Banco) -> casillero oculto del formulario
 const ppInputs = {};
@@ -2219,11 +2222,11 @@ function ppSetModo(m){
 }
 
 ppChips.innerHTML = PP_CHIPS.map(q => `<button type="button" data-q="${q}"></button>`).join('');
-ppSetModo(1);
+ppSetModo(PP_MODO_DEFECTO);
 
 function ppAbrirPicker(producto){
-  ppSel = (producto && ppInputs[producto]) ? producto : null;
-  ppSetModo(1);
+  ppSel = (producto && ppInputs[producto]) ? producto : (ppInputs[PP_PRODUCTO_DEFECTO] ? PP_PRODUCTO_DEFECTO : null);
+  ppSetModo(PP_MODO_DEFECTO);
   ppModal.classList.remove('hidden');
   ppRenderGrid();
   ppSyncCtrl(true);
@@ -2247,7 +2250,7 @@ ppModal.addEventListener('click', (e) => { if(e.target === ppModal) ppCerrarPick
 ppGrid.addEventListener('click', (e) => {
   const b = e.target.closest('.pp-btn');
   if(!b || !ppInputs[b.dataset.p]) return;
-  if(ppSel !== b.dataset.p){ ppSel = b.dataset.p; ppSetModo(1); }
+  if(ppSel !== b.dataset.p){ ppSel = b.dataset.p; ppSetModo(PP_MODO_DEFECTO); }
   ppRenderGrid();
   ppSyncCtrl(true);
 });
