@@ -872,10 +872,10 @@
         </button>
         <div class="dd-panel hidden" id="dd-panel"></div>
       </div>
-      <input type="text" id="nm-concepto" maxlength="30" placeholder="Ej: 1B, Juan, Gustavo, Comedor">
+      <input type="text" id="nm-concepto" enterkeyhint="done" maxlength="30" placeholder="Ej: 1B, Juan, Gustavo, Comedor">
 
       <label>Notas</label>
-      <input type="text" id="nm-notas" maxlength="30" placeholder="Opcional">
+      <input type="text" id="nm-notas" enterkeyhint="done" maxlength="30" placeholder="Opcional">
 
       <div class="nuevo-productos-title">Importe</div>
       <button type="button" class="pp-abrir" id="pp-abrir">＋ Agregar importe</button>
@@ -911,7 +911,7 @@
         <div class="pp-nombre" id="pp-nombre">Elegí Efectivo, Cheque o Banco</div>
         <div class="pp-fila">
           <button type="button" class="pp-modo menos" id="pp-menos" aria-label="Restar">−</button>
-          <input type="text" inputmode="decimal" id="pp-cant" placeholder="$0" autocomplete="off">
+          <input type="text" inputmode="decimal" enterkeyhint="done" id="pp-cant" placeholder="$0" autocomplete="off">
           <button type="button" class="pp-modo mas on" id="pp-mas" aria-label="Sumar">+</button>
           <button type="button" class="pp-borrar" id="pp-borrar">Borrar</button>
         </div>
@@ -939,7 +939,7 @@
       <button type="button" class="cfg-ordenar" id="cfg-ordenar-btn">Ordenar A–Z</button>
       <div class="cfg-lista" id="cfg-lista"></div>
       <div class="cfg-agregar">
-        <input type="text" id="cfg-nuevo" maxlength="30" placeholder="Nuevo concepto">
+        <input type="text" id="cfg-nuevo" enterkeyhint="done" maxlength="30" placeholder="Nuevo concepto">
         <button type="button" id="cfg-agregar-btn">Agregar</button>
       </div>
     </div>
@@ -1025,7 +1025,7 @@
 
 
   <div class="search-wrap" id="search-wrap" style="display:none;">
-    <input type="text" id="search" placeholder="Buscar movimiento...">
+    <input type="text" id="search" enterkeyhint="done" placeholder="Buscar movimiento...">
     <div class="chips-rapidos" id="chips-rapidos"></div>
   </div>
 
@@ -2151,7 +2151,10 @@ function limpiarCantidadParaEnvio(valorFormateado){
 const PP_CHIPS = [1000, 5000, 10000, 20000, 50000, 100000];
 // Al abrir la ventana: producto elegido y modo (1 = suma, -1 = resta)
 const PP_PRODUCTO_DEFECTO = 'Efectivo';
-const PP_MODO_DEFECTO = -1;
+// Por defecto los botones RESTAN (−), salvo en las categorías de esta lista, donde arrancan
+// sumando (+). Siempre se puede cambiar a mano entre + y −.
+const PP_CATEGORIAS_POSITIVAS = ['Repartos', 'Granja'];
+function ppModoDefecto(){ return PP_CATEGORIAS_POSITIVAS.includes(nmSeccion.value) ? 1 : -1; }
 const ppModal = document.getElementById('prod-modal');
 const ppGrid = document.getElementById('pp-grid');
 const ppNombre = document.getElementById('pp-nombre');
@@ -2164,7 +2167,7 @@ const ppTotal = document.getElementById('pp-total');
 const ppAbrir = document.getElementById('pp-abrir');
 const ppResumen = document.getElementById('pp-resumen');
 let ppSel = null;
-let ppModo = PP_MODO_DEFECTO;
+let ppModo = -1;
 
 // concepto de plata (Efectivo/Cheque/Banco) -> casillero oculto del formulario
 const ppInputs = {};
@@ -2222,11 +2225,11 @@ function ppSetModo(m){
 }
 
 ppChips.innerHTML = PP_CHIPS.map(q => `<button type="button" data-q="${q}"></button>`).join('');
-ppSetModo(PP_MODO_DEFECTO);
+ppSetModo(ppModoDefecto());
 
 function ppAbrirPicker(producto){
   ppSel = (producto && ppInputs[producto]) ? producto : (ppInputs[PP_PRODUCTO_DEFECTO] ? PP_PRODUCTO_DEFECTO : null);
-  ppSetModo(PP_MODO_DEFECTO);
+  ppSetModo(ppModoDefecto());
   ppModal.classList.remove('hidden');
   ppRenderGrid();
   ppSyncCtrl(true);
@@ -2250,7 +2253,7 @@ ppModal.addEventListener('click', (e) => { if(e.target === ppModal) ppCerrarPick
 ppGrid.addEventListener('click', (e) => {
   const b = e.target.closest('.pp-btn');
   if(!b || !ppInputs[b.dataset.p]) return;
-  if(ppSel !== b.dataset.p){ ppSel = b.dataset.p; ppSetModo(PP_MODO_DEFECTO); }
+  if(ppSel !== b.dataset.p){ ppSel = b.dataset.p; ppSetModo(ppModoDefecto()); }
   ppRenderGrid();
   ppSyncCtrl(true);
 });
@@ -2271,6 +2274,14 @@ ppBorrar.addEventListener('click', () => {
   if(!ppSel) return;
   ppSetValor(ppSel, 0);
   ppSyncCtrl(true);
+});
+
+// Tecla "OK/Listo" del teclado del celular: cierra el teclado
+document.addEventListener('keydown', (e) => {
+  if(e.key === 'Enter' && e.target.matches && e.target.matches('#pp-cant, #nm-concepto, #nm-notas, #search')){
+    e.preventDefault();
+    e.target.blur();
+  }
 });
 
 // Escribir a mano el importe exacto
