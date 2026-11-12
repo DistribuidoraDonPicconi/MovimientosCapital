@@ -40,8 +40,6 @@
 
   // Expuestos en window porque el resto del código (fuera de este módulo)
   // todavía es JS clásico, no un módulo — así lo puede usar sin import.
-  window.firebaseDb = db;
-  window.firebaseAuth = firebaseAuth;
   window.firebaseSignOut = () => signOut(firebaseAuth);
   // Única fuente de verdad de la sesión: Firebase Auth (persiste sola y renueva el token).
   window.firebaseOnAuth = (cb) => onAuthStateChanged(firebaseAuth, cb);
@@ -161,7 +159,6 @@
     --azul: #2f7a37;
     --azul-suave: #eaf5e3;
     --azul-borde: #d9ead0;
-    --ambar: #b5651d;
     --fondo: #f4fbe8;
     --linea: #e3ecd9;
     --verde: #1f8a4c;
@@ -1141,9 +1138,6 @@ const CONFIG = {
     'ayudante': { categoria: 'Granja' }
   },
 
-  // Nombre EXACTO de la columna de fecha a usar para ordenar / mostrar
-  CAMPO_FECHA: 'Fecha',
-
   // Columnas de plata, en el orden en que querés que aparezcan
   PRODUCTOS: ['Efectivo', 'Cheque', 'Banco']
 };
@@ -1159,7 +1153,6 @@ const searchWrapEl = document.getElementById('search-wrap');
 const headerTitle = document.getElementById('header-title');
 const btnRefresh = document.getElementById('btn-refresh');
 const btnExportar = document.getElementById('btn-exportar');
-const appEl = document.getElementById('app');
 const resumenControlsEl = document.getElementById('resumen-controls');
 const resumenPersonalizadoEl = document.getElementById('resumen-personalizado');
 const resumenDesdeEl = document.getElementById('resumen-desde');
@@ -1188,13 +1181,19 @@ function fechaLocalInput(d){
   return `${yyyy}-${mm}-${dd}`;
 }
 
-function formatNum(n){
-  const num = Number(n || 0);
-  const esEntero = Math.round((num + Number.EPSILON) * 100) / 100 % 1 === 0;
-  return num.toLocaleString('es-AR', {
-    minimumFractionDigits: esEntero ? 0 : 2,
-    maximumFractionDigits: 2
-  });
+// Fecha del movimiento como Date a medianoche LOCAL (null si no tiene o es inválida).
+// Se arma así porque mov.fecha es "YYYY-MM-DD" y new Date("YYYY-MM-DD") lo
+// interpretaría en UTC, corriendo el día en Argentina.
+function fechaDeMov(mov){
+  if(!mov.fecha) return null;
+  const d = new Date(mov.fecha + 'T00:00:00');
+  return isNaN(d) ? null : d;
+}
+
+// Importe de un movimiento en un producto (Efectivo/Cheque/Banco).
+// Devuelve NaN si no se cargó nada en ese producto.
+function importe(mov, p){
+  return mov.productos ? parseFloat(mov.productos[p]) : NaN;
 }
 
 // Formatea un monto de plata: sin decimales si el número es entero,
@@ -1424,7 +1423,7 @@ function handleCredentialResponse(response){
     return;
   }
   window.firebaseSignInConCredencialGoogle(response.credential).catch((err) => {
-    mostrarPantallaLogin('No se pudo autenticar con Firebase.<br>' + (err && err.message ? err.message : ''));
+    mostrarPantallaLogin('No se pudo autenticar con Firebase.<br>' + escHTML_(err && err.message ? err.message : ''));
   });
 }
 
@@ -1459,7 +1458,7 @@ function iniciarSesionFirebase(){
     // Si el email no figura en la lista de roles, se corta acá y se cierra la sesión.
     if(!rol){
       window.firebaseSignOut().catch(() => {});
-      mostrarPantallaLogin('Tu cuenta (' + (user.email || '') + ') no tiene acceso a esta app.');
+      mostrarPantallaLogin('Tu cuenta (' + escHTML_(user.email || '') + ') no tiene acceso a esta app.');
       return;
     }
     emailActual = String(user.email || '');
@@ -1504,42 +1503,16 @@ setTimeout(() => {
   }
 }, 8000);
 
-// Maneja el caso en que Firestore/Firebase indica que el token no es
-// válido o que el email no está en la lista permitida.
-function esRespuestaNoAutorizada(data){
-  if(data && data.auth === true){
-    // Cerramos también la sesión de Firebase: si no, al volver a loguear con el
-    // mismo usuario onAuthStateChanged no se dispara y quedaría la pantalla trabada.
-    if(window.firebaseSignOut){ window.firebaseSignOut().catch(() => {}); }
-    mostrarPantallaLogin('Esta cuenta de Google no tiene permiso para acceder a la app, o la sesión actual venció.<br>Probá iniciar sesión nuevamente.');
-    return true;
-  }
-  return false;
+// Se usa cuando Firestore responde 'permission-denied': el token no es válido
+// o el usuario no tiene permiso según las reglas de seguridad.
+function cerrarSesionPorFaltaDePermiso(){
+  // Cerramos también la sesión de Firebase: si no, al volver a loguear con el
+  // mismo usuario onAuthStateChanged no se dispara y quedaría la pantalla trabada.
+  if(window.firebaseSignOut){ window.firebaseSignOut().catch(() => {}); }
+  mostrarPantallaLogin('Esta cuenta de Google no tiene permiso para acceder a la app, o la sesión actual venció.<br>Probá iniciar sesión nuevamente.');
 }
 
 /* =============================================== */
-
-// Convierte un documento de Firestore ({id, usuario, fechaReal, fecha,
-// seccion, concepto, notas, productos:{...}}) al mismo formato plano tipo
-// "fila de planilla" que usa el resto de la app (ID, Usuario, Fecha, etc).
-// Así calcularStock(), render() y todo lo demás siguen funcionando igual
-// que cuando los datos venían del Google Sheet.
-function firestoreDocAFilaPlana_(docData){
-  const fila = {
-    'ID': docData.id,
-    'Usuario': docData.usuario || '',
-    'Fecha Real': docData.fechaReal || '',
-    'Fecha': docData.fecha ? new Date(docData.fecha + 'T00:00:00').toISOString() : '',
-    'Categoría': docData.seccion || '',
-    'Concepto': docData.concepto || '',
-    'Notas': docData.notas || ''
-  };
-  CONFIG.PRODUCTOS.forEach(p => {
-    const val = docData.productos ? docData.productos[p] : undefined;
-    fila[p] = (val === undefined || val === null) ? '' : val;
-  });
-  return fila;
-}
 
 // Determina con qué alcance hay que consultar Firestore según el rol
 // actual (tiene que coincidir con lo que validan las reglas de seguridad).
@@ -1551,19 +1524,18 @@ function alcanceActual(){
   return { tipo: 'propio', email: emailActual };
 }
 
-async function cargarDatos(forzar){
+async function cargarDatos(){
   btnRefresh.classList.add('spinning');
   try{
     const docs = await window.firestoreLeerMovimientos(alcanceActual());
-    movimientos = docs.map(firestoreDocAFilaPlana_);
-    if(currentTab === 'movimientos') irAlFondoMovimientos = true;
+    movimientos = docs;
     render();
   }catch(err){
     if(err && err.code === 'permission-denied'){
-      esRespuestaNoAutorizada({auth: true});
+      cerrarSesionPorFaltaDePermiso();
       return;
     }
-    mainEl.innerHTML = `<div class="state-msg error">No se pudieron cargar los datos.<br>${err.message}</div>`;
+    mainEl.innerHTML = `<div class="state-msg error">No se pudieron cargar los datos.<br>${escHTML_(err.message)}</div>`;
   }finally{
     btnRefresh.classList.remove('spinning');
   }
@@ -1575,11 +1547,11 @@ function calcularStock(){
 
   movimientos.forEach(mov => {
     CONFIG.PRODUCTOS.forEach(p => {
-      const cant = parseFloat(mov[p]);
+      const cant = importe(mov, p);
       if(!isNaN(cant) && cant !== 0){
         stock[p].total += cant;
-        const f = new Date(mov[CONFIG.CAMPO_FECHA]);
-        if(!isNaN(f) && (!stock[p].ultimaFecha || f > stock[p].ultimaFecha)){
+        const f = fechaDeMov(mov);
+        if(f && (!stock[p].ultimaFecha || f > stock[p].ultimaFecha)){
           stock[p].ultimaFecha = f;
         }
       }
@@ -1674,7 +1646,7 @@ function obtenerRangoResumen(){
 
 function seccionCoincide(mov, categoriaFiltro){
   if(!categoriaFiltro) return true;
-  return mov['Categoría'] === categoriaFiltro;
+  return mov.seccion === categoriaFiltro;
 }
 
 function actualizarOpcionesConcepto(){
@@ -1685,10 +1657,10 @@ function actualizarOpcionesConcepto(){
   const conceptos = new Set();
   if(desde && hasta){
     movimientos.forEach(mov => {
-      const f = new Date(mov[CONFIG.CAMPO_FECHA]);
-      if(isNaN(f) || f < desde || f > hasta) return;
+      const f = fechaDeMov(mov);
+      if(!f || f < desde || f > hasta) return;
       if(!seccionCoincide(mov, categoria)) return;
-      const concepto = (mov['Concepto'] || '').trim();
+      const concepto = (mov.concepto || '').trim();
       if(concepto) conceptos.add(concepto);
     });
   }
@@ -1697,7 +1669,7 @@ function actualizarOpcionesConcepto(){
   const mantieneSeleccion = listaOrdenada.includes(seleccionPrevia);
 
   resumenConceptoEl.innerHTML = `<option value="">Todos</option>`
-    + listaOrdenada.map(c => `<option value="${c}">${c}</option>`).join('');
+    + listaOrdenada.map(c => `<option value="${escHTML_(c)}">${escHTML_(c)}</option>`).join('');
   resumenConceptoEl.value = mantieneSeleccion ? seleccionPrevia : '';
   rsSync();
 }
@@ -1713,13 +1685,13 @@ function calcularResumen(){
   if(!desde || !hasta) return resumen;
 
   movimientos.forEach(mov => {
-    const f = new Date(mov[CONFIG.CAMPO_FECHA]);
-    if(isNaN(f) || f < desde || f > hasta) return;
+    const f = fechaDeMov(mov);
+    if(!f || f < desde || f > hasta) return;
     if(!seccionCoincide(mov, categoria)) return;
-    if(concepto && (mov['Concepto'] || '').trim() !== concepto) return;
+    if(concepto && (mov.concepto || '').trim() !== concepto) return;
 
     CONFIG.PRODUCTOS.forEach(p => {
-      const cant = parseFloat(mov[p]);
+      const cant = importe(mov, p);
       if(!isNaN(cant) && cant !== 0){
         if(cant > 0) resumen[p].entradas += cant;
         else resumen[p].salidas += Math.abs(cant);
@@ -1798,35 +1770,30 @@ function renderResumen(){
     </div>`;
 }
 
-// Total de un movimiento: usa la columna "Total" de la planilla si vino
-// cargada, o si no la calcula sumando Efectivo + Cheque + Banco.
+// Total de un movimiento: suma Efectivo + Cheque + Banco.
 function totalMovimiento(mov){
-  const totalPlanilla = parseFloat(mov['Total']);
-  if(!isNaN(totalPlanilla) && mov['Total'] !== '' && mov['Total'] !== undefined && mov['Total'] !== null){
-    return totalPlanilla;
-  }
   return CONFIG.PRODUCTOS.reduce((acc, p) => {
-    const v = parseFloat(mov[p]);
+    const v = importe(mov, p);
     return acc + (isNaN(v) ? 0 : v);
   }, 0);
 }
 
 function renderMovimientos(filtro){
-  // Se muestran en el mismo orden en que están en la planilla (orden de carga),
+  // Se muestran en el mismo orden en que vienen de Firestore (orden de carga),
   // sin reordenar por Fecha. Así, si alguien carga mal la fecha, el error se
   // nota porque el movimiento aparece fuera de lugar en vez de quedar oculto.
   const ordenados = movimientos;
 
   const filas = ordenados
     .filter(mov => {
-      if(seccionRapida && mov['Categoría'] !== seccionRapida) return false;
+      if(seccionRapida && mov.seccion !== seccionRapida) return false;
       if(!filtro) return true;
-      const texto = `${mov['Concepto']||''} ${mov['Categoría']||''} ${mov['Notas']||''} ${mov['Usuario']||''}`.toLowerCase();
+      const texto = `${mov.concepto||''} ${mov.seccion||''} ${mov.notas||''} ${mov.usuario||''}`.toLowerCase();
       return texto.includes(filtro.toLowerCase());
     })
     .map(mov => {
       const celdasProducto = CONFIG.PRODUCTOS.map(p => {
-        const val = parseFloat(mov[p]);
+        const val = importe(mov, p);
         if(!val) return `<td class="num zero">-</td>`;
         const cls = val >= 0 ? 'pos' : 'neg';
         return `<td class="num ${cls}">${formatMoneda(val)}</td>`;
@@ -1835,14 +1802,14 @@ function renderMovimientos(filtro){
       const total = totalMovimiento(mov);
       const clsTotal = total > 0 ? 'pos' : (total < 0 ? 'neg' : 'zero');
 
-      return `<tr class="mov-row" data-id="${mov['ID'] || ''}">
-        <td class="fecha">${formatFecha(mov[CONFIG.CAMPO_FECHA])}</td>
-        <td>${mov['Categoría'] || '-'}</td>
-        <td>${mov['Concepto'] || '-'}</td>
+      return `<tr class="mov-row" data-id="${escHTML_(mov.id || '')}">
+        <td class="fecha">${formatFecha(fechaDeMov(mov))}</td>
+        <td>${escHTML_(mov.seccion || '-')}</td>
+        <td>${escHTML_(mov.concepto || '-')}</td>
         ${celdasProducto}
         <td class="num ${clsTotal}">${formatMoneda(total)}</td>
-        <td>${mov['Notas'] || '-'}</td>
-        <td>${mov['Usuario'] || '-'}</td>
+        <td>${escHTML_(mov.notas || '-')}</td>
+        <td>${escHTML_(mov.usuario || '-')}</td>
       </tr>`;
     }).join('');
 
@@ -1851,7 +1818,7 @@ function renderMovimientos(filtro){
     return;
   }
 
-  const headerProductos = CONFIG.PRODUCTOS.map(p => `<th>${p}</th>`).join('');
+  const headerProductos = CONFIG.PRODUCTOS.map(p => `<th>${escHTML_(p)}</th>`).join('');
 
   mainEl.innerHTML = `
     <div class="mov-table-wrap">
@@ -1882,25 +1849,14 @@ function renderMovimientos(filtro){
 // Guarda la posición de scroll de cada pestaña para restaurarla al volver
 const scrollState = {
   stock: 0,
-  resumen: 0,
-  movimientos: { top: 0, left: 0 }
+  resumen: 0
 };
 
-// Si está en true, la próxima vez que se restaure el scroll de Movimientos
-// se va directo al final (abajo a la izquierda) en vez de la posición previa.
-// Se usa al sincronizar (botón refrescar).
-let irAlFondoMovimientos = false;
-
 function guardarScrollActual(){
-  if(currentTab === 'movimientos'){
-    const movScroll = document.getElementById('mov-scroll');
-    if(movScroll){
-      scrollState.movimientos.top = movScroll.scrollTop;
-      scrollState.movimientos.left = movScroll.scrollLeft;
-    }
-  }else if(currentTab === 'resumen'){
+  // Movimientos no guarda posición: siempre se muestra abajo del todo.
+  if(currentTab === 'resumen'){
     scrollState.resumen = mainEl.scrollTop;
-  }else{
+  }else if(currentTab === 'stock'){
     scrollState.stock = mainEl.scrollTop;
   }
 }
@@ -1975,7 +1931,7 @@ function setTab(tab){
   // apretara el botón Actualizar. En Movimientos y Resumen se usa el dato
   // ya cargado (hay que tocar el botón de sincronizar a mano si hace
   // falta refrescar).
-  if(tab === 'stock') cargarDatos(true);
+  if(tab === 'stock') cargarDatos();
 }
 
 document.getElementById('tab-stock').addEventListener('click', () => setTab('stock'));
@@ -1998,11 +1954,10 @@ resumenConceptoEl.addEventListener('change', renderResumen);
 
 // El botón de sincronizar vuelve a pedirle los datos a Firestore (que
 // siempre lee en vivo, sin caché intermedia).
-btnRefresh.addEventListener('click', () => cargarDatos(true));
+btnRefresh.addEventListener('click', () => cargarDatos());
 searchEl.addEventListener('input', () => {
   // al filtrar, arrancamos la vista de nuevo desde arriba
   scrollState.stock = 0;
-  scrollState.movimientos = { top: 0, left: 0 };
   render();
 });
 
@@ -2014,21 +1969,21 @@ function filasParaExportar(){
   const filtro = searchEl.value.trim().toLowerCase();
   return movimientos
     .filter(mov => {
-      if(seccionRapida && mov['Categoría'] !== seccionRapida) return false;
+      if(seccionRapida && mov.seccion !== seccionRapida) return false;
       if(!filtro) return true;
-      const texto = `${mov['Concepto']||''} ${mov['Categoría']||''} ${mov['Notas']||''} ${mov['Usuario']||''}`.toLowerCase();
+      const texto = `${mov.concepto||''} ${mov.seccion||''} ${mov.notas||''} ${mov.usuario||''}`.toLowerCase();
       return texto.includes(filtro);
     })
     .map(mov => {
       const fila = {
-        'Fecha': formatFecha(mov[CONFIG.CAMPO_FECHA]),
-        'Categoría': mov['Categoría'] || '',
-        'Concepto': mov['Concepto'] || ''
+        'Fecha': formatFecha(fechaDeMov(mov)),
+        'Categoría': mov.seccion || '',
+        'Concepto': mov.concepto || ''
       };
-      CONFIG.PRODUCTOS.forEach(p => { fila[p] = parseFloat(mov[p]) || 0; });
+      CONFIG.PRODUCTOS.forEach(p => { fila[p] = importe(mov, p) || 0; });
       fila['Total'] = totalMovimiento(mov);
-      fila['Notas'] = mov['Notas'] || '';
-      fila['Usuario'] = mov['Usuario'] || '';
+      fila['Notas'] = mov.notas || '';
+      fila['Usuario'] = mov.usuario || '';
       return fila;
     });
 }
@@ -2107,7 +2062,6 @@ chipsRapidosEl.addEventListener('click', (e) => {
   seccionRapida = (seccionRapida === btn.dataset.sec) ? '' : btn.dataset.sec;
   chipsRapidosEl.querySelectorAll('.chip-rapido').forEach(b =>
     b.classList.toggle('active', b.dataset.sec === seccionRapida));
-  scrollState.movimientos = { top: 0, left: 0 };
   render();   // al renderizar, Movimientos queda abajo del todo (último cargado)
 });
 
@@ -2170,7 +2124,7 @@ const fabCopiar = document.getElementById('fab-copiar');
 const fabEliminar = document.getElementById('fab-eliminar');
 let filaSeleccionadaId = null;
 // Movimiento original que se está editando (para poder conservar datos
-// como "Fecha Real" al actualizar la lista en memoria sin recargar todo).
+// como fechaReal al actualizar la lista en memoria sin recargar todo).
 let movEnEdicion = null;
 
 function actualizarSeleccionUI(){
@@ -2190,13 +2144,13 @@ function deseleccionarFila(){
 }
 
 fabEditar.addEventListener('click', () => {
-  const mov = movimientos.find(m => String(m['ID']) === String(filaSeleccionadaId));
+  const mov = movimientos.find(m => String(m.id) === String(filaSeleccionadaId));
   deseleccionarFila();
   if(mov) abrirNuevoModal(mov, true);
 });
 
 fabCopiar.addEventListener('click', () => {
-  const mov = movimientos.find(m => String(m['ID']) === String(filaSeleccionadaId));
+  const mov = movimientos.find(m => String(m.id) === String(filaSeleccionadaId));
   deseleccionarFila();
   if(mov) abrirNuevoModal(mov, false);
 });
@@ -2224,8 +2178,7 @@ document.getElementById('confirm-eliminar-aceptar').addEventListener('click', as
   try{
     await window.firestoreEliminarMovimiento(idBorrar);
 
-    movimientos = movimientos.filter(m => String(m['ID']) !== String(idBorrar));
-    if(currentTab === 'movimientos') irAlFondoMovimientos = true;
+    movimientos = movimientos.filter(m => String(m.id) !== String(idBorrar));
 
     confirmEliminarModal.classList.add('hidden');
     idAEliminar = null;
@@ -2383,7 +2336,7 @@ function actualizarTotalFormulario(){
 }
 
 // Antes de enviar/calcular: quita el $ y los puntos de miles y deja el
-// número limpio (la coma decimal se convierte a punto del lado del Apps Script).
+// número limpio (la coma decimal se convierte a punto en quien llama a esta función).
 function limpiarCantidadParaEnvio(valorFormateado){
   return valorFormateado.replace(/\$/g, '').replace(/\./g, '');
 }
@@ -2670,7 +2623,7 @@ function actualizarSeccionesPermitidas(){
   });
 }
 
-// Convierte un valor numérico tal como viene de la planilla (ej: -52.5)
+// Convierte un valor numérico tal como viene de Firestore (ej: -52.5)
 // al formato que usan los inputs (ej: "-52,5", con separador de miles si aplica)
 function numeroAInputStr(num){
   if(num === undefined || num === null || num === '') return '';
@@ -2682,24 +2635,22 @@ function numeroAInputStr(num){
 function abrirNuevoModal(mov, modoEditar){
   const precargar = !!mov;
   movEnEdicion = (precargar && modoEditar) ? mov : null;
-  nmEditId.value = (precargar && modoEditar) ? (mov['ID'] || '') : '';
+  nmEditId.value = (precargar && modoEditar) ? (mov.id || '') : '';
   nuevoTitulo.textContent = modoEditar ? 'Editar movimiento' : (precargar ? 'Copiar movimiento' : 'Nuevo movimiento');
 
   // Para 'ayudante', preselecciona (y deja como única opción visible,
   // ver actualizarSeccionesPermitidas) su categoría restringida (ej:
   // 'Granja'), ya que es la única en la que puede cargar movimientos.
   const restrCategorias = restriccionRolActual();
-  seleccionarSeccion(precargar ? (mov['Categoría'] || '') : (restrCategorias ? restrCategorias.categoria : 'Frigorífico'));
-  nmConcepto.value = precargar ? (mov['Concepto'] || '') : '';
+  seleccionarSeccion(precargar ? (mov.seccion || '') : (restrCategorias ? restrCategorias.categoria : 'Frigorífico'));
+  nmConcepto.value = precargar ? (mov.concepto || '') : '';
   refrescarConceptoUI();
-  nmNotas.value = precargar ? (mov['Notas'] || '') : '';
+  nmNotas.value = precargar ? (mov.notas || '') : '';
   nmUsuario.value = emailActual;
-  nmFecha.value = precargar && mov[CONFIG.CAMPO_FECHA]
-    ? fechaLocalInput(new Date(mov[CONFIG.CAMPO_FECHA]))
-    : fechaLocalInput(new Date());
+  nmFecha.value = (precargar && mov.fecha) ? mov.fecha : fechaLocalInput(new Date());
 
   document.querySelectorAll('#nm-productos-principales input').forEach(inp => {
-    inp.value = (precargar && modoEditar) ? numeroAInputStr(mov[inp.dataset.producto]) : '';
+    inp.value = (precargar && modoEditar) ? numeroAInputStr(mov.productos && mov.productos[inp.dataset.producto]) : '';
   });
   actualizarTotalFormulario();
 
@@ -2712,40 +2663,6 @@ function abrirNuevoModal(mov, modoEditar){
 
 function cerrarNuevoModal(){
   nuevoModal.classList.add('hidden');
-}
-
-// Construye el objeto de movimiento con las mismas claves y el mismo
-// formato de fecha (ISO) que usa firestoreDocAFilaPlana_, a partir de lo
-// que se acaba de guardar. Se usa para actualizar la lista en memoria sin
-// tener que pedirle todo de nuevo a Firestore.
-function construirMovimientoLocal(payload, idFinal, movOriginal){
-  const productosNum = {};
-  CONFIG.PRODUCTOS.forEach(p => {
-    const val = payload.productos ? payload.productos[p] : undefined;
-    if(val === undefined || val === null || val === ''){
-      productosNum[p] = '';
-    }else{
-      const num = parseFloat(String(val).replace(',', '.'));
-      productosNum[p] = isNaN(num) ? '' : num;
-    }
-  });
-
-  const total = CONFIG.PRODUCTOS.reduce((acc, p) => acc + (parseFloat(productosNum[p]) || 0), 0);
-
-  const mov = {
-    'ID': idFinal,
-    'Usuario': payload.usuario,
-    'Fecha Real': (movOriginal && movOriginal['Fecha Real']) || new Date().toISOString(),
-    'Fecha': payload.fecha
-      ? new Date(payload.fecha + 'T00:00:00').toISOString()
-      : ((movOriginal && movOriginal['Fecha']) || new Date().toISOString()),
-    'Categoría': payload.seccion,
-    'Concepto': payload.concepto,
-    'Notas': payload.notas,
-    'Total': total
-  };
-  CONFIG.PRODUCTOS.forEach(p => { mov[p] = productosNum[p]; });
-  return mov;
 }
 
 /* ============== Modal Config: listas de conceptos ============== */
@@ -2910,7 +2827,7 @@ btnGuardar.addEventListener('click', async () => {
       id: idFinal,
       usuario: payload.usuario,
       fechaReal: esEdicion
-        ? ((movEnEdicion && movEnEdicion['Fecha Real']) || new Date().toISOString())
+        ? ((movEnEdicion && movEnEdicion.fechaReal) || new Date().toISOString())
         : new Date().toISOString(),
       fecha: payload.fecha,
       fechaTS: window.firestoreFechaATimestamp(payload.fecha),
@@ -2929,14 +2846,14 @@ btnGuardar.addEventListener('click', async () => {
 
     await window.firestoreGuardarMovimiento(idFinal, docFirestore);
 
-    const movGuardado = construirMovimientoLocal(payload, idFinal, movEnEdicion);
-    const idx = movimientos.findIndex(m => String(m['ID']) === String(idFinal));
+    // Se actualiza la lista en memoria con el mismo documento que se guardó,
+    // sin tener que pedirle todo de nuevo a Firestore.
+    const idx = movimientos.findIndex(m => String(m.id) === String(idFinal));
     if(idx !== -1){
-      movimientos[idx] = movGuardado;
+      movimientos[idx] = docFirestore;
     }else{
-      movimientos.push(movGuardado);
+      movimientos.push(docFirestore);
     }
-    if(currentTab === 'movimientos') irAlFondoMovimientos = true;
 
     cerrarNuevoModal();
     render();
